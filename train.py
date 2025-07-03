@@ -16,7 +16,7 @@ MASK_DIR = '../masks_petals'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 EPOCHS = 250
 BATCH_SIZE = 8
-LR = 1e-5
+LR = 1e-4
 SAVE_PATH = 'unet_petals.pth'
 RANDOM_SEED = 42  # Semilla para mantener los conjuntos de validacion y prueba
 
