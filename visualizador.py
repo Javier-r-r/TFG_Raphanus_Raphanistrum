@@ -6,7 +6,7 @@ import torchvision.transforms as T
 from PIL import Image
 import numpy as np
 
-# Modelo UNet (igual que antes)
+# Modelo UNet
 import torch.nn as nn
 class UNet(nn.Module):
     def __init__(self):
@@ -20,20 +20,25 @@ class UNet(nn.Module):
                 nn.BatchNorm2d(out_channels),
                 nn.ReLU(inplace=True)
             )
+
         self.enc1 = CBR(3, 64)
         self.pool1 = nn.MaxPool2d(2)
         self.enc2 = CBR(64, 128)
         self.pool2 = nn.MaxPool2d(2)
         self.enc3 = CBR(128, 256)
         self.pool3 = nn.MaxPool2d(2)
+
         self.bottleneck = CBR(256, 512)
+
         self.up3 = nn.ConvTranspose2d(512, 256, 2, stride=2)
         self.dec3 = CBR(512, 256)
         self.up2 = nn.ConvTranspose2d(256, 128, 2, stride=2)
         self.dec2 = CBR(256, 128)
         self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
         self.dec1 = CBR(128, 64)
+
         self.final = nn.Conv2d(64, 1, kernel_size=1)
+
     def forward(self, x):
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool1(e1))
@@ -44,22 +49,40 @@ class UNet(nn.Module):
         d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
         return torch.sigmoid(self.final(d1))
 
-# Dataset
+# Dataset para visualizar las imágenes de test
 class PetalVeinDataset(torch.utils.data.Dataset):
-    def __init__(self, image_dir, mask_dir, transform=None):
-        self.images = sorted(glob(os.path.join(image_dir, '*.tif')))
-        self.masks = sorted(glob(os.path.join(mask_dir, '*.png')))
+    def __init__(self, image_dir, mask_dir, test_files, transform=None):
+        self.images = []
+        self.masks = []
         self.transform = transform
+
+        # Cargar solo los archivos listados en test_files.txt
+        with open(test_files, 'r') as f:
+            test_names = [line.strip() for line in f]
+
+        for name in test_names:
+            img_path = os.path.join(image_dir, name)
+            mask_name = name.replace('.tif', '.png')
+            mask_path = os.path.join(mask_dir, mask_name)
+            
+            if os.path.exists(img_path) and os.path.exists(mask_path):
+                self.images.append(img_path)
+                self.masks.append(mask_path)
+
     def __len__(self):
         return len(self.images)
+
     def __getitem__(self, idx):
         img_path = self.images[idx]
         mask_path = self.masks[idx]
+
         image = Image.open(img_path).convert('RGB')
         mask = Image.open(mask_path).convert('L')
+
         if self.transform:
             image = self.transform(image)
             mask = self.transform(mask)
+
         return image, mask, os.path.basename(img_path)
 
 # Configuración
@@ -68,6 +91,7 @@ IMAGE_DIR = '../database_petals'
 MASK_DIR = '../masks_petals'
 MODEL_PATH = 'unet_petals.pth'
 OUTPUT_DIR = './resultados_predicciones'
+FILES_TO_USE = 'test_files.txt'
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -82,7 +106,7 @@ model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 
 # Dataset
-dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, transform)
+dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, FILES_TO_USE, transform)
 loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
 # Guardar predicciones
@@ -109,5 +133,6 @@ def save_predictions():
 
             print(f"Guardadas predicciones para {name[0]}")
 
+# Guardar las imagenes
 save_predictions()
 

@@ -8,15 +8,17 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
+from torch.utils.data import random_split
 
 # Config
 IMAGE_DIR = '../database_petals'
 MASK_DIR = '../masks_petals'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-EPOCHS = 200
+EPOCHS = 250
 BATCH_SIZE = 4
 LR = 1e-4
 SAVE_PATH = 'unet_petals.pth'
+RANDOM_SEED = 42  # Semilla para mantener los conjuntos de validacion y prueba
 
 # Dataset personalizado
 class PetalVeinDataset(Dataset):
@@ -48,7 +50,23 @@ transform = T.Compose([
 
 # Dataset y DataLoader
 dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, transform)
-loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+# Especificar los tamaños de los diferentes conjuntos
+train_size = int(0.7*len(dataset))
+val_size = int(0.15*len(dataset))
+test_size = len(dataset) - train_size - val_size
+#Dividir el dataset
+train_data, val_data, test_data = random_split(dataset, [0.7, 0.15, 0.15],
+						generator=torch.Generator().manual_seed(RANDOM_SEED))
+# Guardar nombres de archivos de val y test
+def save_split_files(dataset, output_file):
+    with open(output_file, 'w') as f:
+        for idx in dataset.indices:
+            f.write(f"{os.path.basename(dataset.dataset.images[idx])}\n")
+
+save_split_files(test_data, 'test_files.txt')
+#Crear los DataLoaders para cada conjunto
+train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_data, batch_size = BATCH_SIZE)
 
 # UNet simple
 class UNet(nn.Module):
@@ -110,14 +128,15 @@ class DiceBCELoss(nn.Module):
 model = UNet().to(DEVICE)
 criterion = DiceBCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-
+patience = 10
 best_loss = float('inf')
+counter = 0
 
 for epoch in range(EPOCHS):
     model.train()
     epoch_loss = 0
 
-    for images, masks in tqdm(loader, desc=f"Epoch {epoch+1}/{EPOCHS}"):
+    for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training"):
         images, masks = images.to(DEVICE), masks.to(DEVICE)
 
         preds = model(images)
@@ -129,13 +148,30 @@ for epoch in range(EPOCHS):
 
         epoch_loss += loss.item()
 
-    avg_loss = epoch_loss / len(loader)
-    print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
+    avg_loss = epoch_loss/len(train_loader)
+
+    model.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for images, masks in tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Validation"):
+            images, masks = images.to(DEVICE), masks.to(DEVICE)
+            preds = model(images)
+            val_loss += criterion(preds, masks).item()
+
+    avg_val_loss = val_loss / len(val_loader)
+    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+
 
     # Guardar el mejor modelo
-    if avg_loss < best_loss:
-        best_loss = avg_loss
+    if avg_val_loss < best_loss:
+        best_loss = avg_val_loss
+        counter = 0
         torch.save(model.state_dict(), SAVE_PATH)
         print(f"Modelo guardado en {SAVE_PATH}")
+    else:
+        counter += 1
+        if counter >= patience:
+            print("Early stopping at epoch {epoch}")
+            break
 
 print("Entrenamiento finalizado.")
