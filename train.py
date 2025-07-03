@@ -130,7 +130,7 @@ class UNet(nn.Module):
 class DiceBCELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.bce = nn.BCELoss()
+        self.bce = nn.BCELoss(pos_weight=torch.tensor([10.0]).to(DEVICE))
 
     def forward(self, preds, targets):
         smooth = 1.
@@ -171,8 +171,11 @@ class FocalDiceLoss(nn.Module):
 
 # Entrenamiento
 model = UNet().to(DEVICE)
-criterion = FocalDiceLoss(alpha=0.8, gamma=2.0).to(DEVICE)
+criterion = DiceBCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, mode='min', patience=10, factor=0.5, verbose=True
+)
 patience = 10
 best_loss = float('inf')
 counter = 0
@@ -210,7 +213,11 @@ for epoch in range(EPOCHS):
 
     avg_val_loss = val_loss / len(val_loader)
     print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f} (Focal: {avg_focal:.4f}, Dice: {avg_dice:.4f})")
+    
+    scheduler.step(avg_val_loss)
 
+    for i, param_group in enumerate(optimizer.param_groups):
+        print(f"Learning rate actual (grupo {i}): {param_group['lr']}")
 
     # Guardar el mejor modelo
     if avg_val_loss < best_loss:
