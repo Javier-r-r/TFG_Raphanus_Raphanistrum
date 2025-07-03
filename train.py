@@ -15,8 +15,8 @@ IMAGE_DIR = '../database_petals'
 MASK_DIR = '../masks_petals'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 EPOCHS = 250
-BATCH_SIZE = 4
-LR = 1e-4
+BATCH_SIZE = 8
+LR = 1e-5
 SAVE_PATH = 'unet_petals.pth'
 RANDOM_SEED = 42  # Semilla para mantener los conjuntos de validacion y prueba
 
@@ -82,11 +82,11 @@ class UNet(nn.Module):
                 nn.ReLU(inplace=True)
             )
 
-        self.enc1 = CBR(3, 64)
+        self.enc1 = CBR(3, 32)
         self.pool1 = nn.MaxPool2d(2)
-        self.enc2 = CBR(64, 128)
+        self.enc2 = CBR(32, 64)
         self.pool2 = nn.MaxPool2d(2)
-        self.enc3 = CBR(128, 256)
+        self.enc3 = CBR(64, 128)
         self.pool3 = nn.MaxPool2d(2)
 
         self.bottleneck = CBR(256, 512)
