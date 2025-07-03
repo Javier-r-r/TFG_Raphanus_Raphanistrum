@@ -140,9 +140,32 @@ class DiceBCELoss(nn.Module):
         dice = (2. * intersection + smooth) / (preds.sum() + targets.sum() + smooth)
         return 1 - dice + self.bce(preds, targets)
 
+class FocalDiceLoss(nn.Module):
+    def __init__(self, alpha=0.8, gamma=2.0, smooth=1.0):
+        super().__init__()
+        self.alpha = alpha  # Peso para las clases minoritarias (venas)
+        self.gamma = gamma  # Factor de enfoque (mayor gamma = más enfoque en ejemplos difíciles)
+        self.smooth = smooth  # Evita divisiones por cero
+        self.bce = nn.BCELoss(reduction='none')  # BCE sin reducción para aplicar Focal
+
+    def forward(self, preds, targets):
+        # --- Focal Loss ---
+        bce_loss = self.bce(preds, targets)
+        pt = torch.exp(-bce_loss)  # Probabilidad de predicción correcta
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
+        focal_loss = focal_loss.mean()  # Promedio sobre todos los píxeles
+
+        # --- Dice Loss ---
+        preds_flat = preds.view(-1)
+        targets_flat = targets.view(-1)
+        intersection = (preds_flat * targets_flat).sum()
+        dice_loss = 1 - (2. * intersection + self.smooth) / (preds_flat.sum() + targets_flat.sum() + self.smooth)
+
+        return focal_loss + dice_loss  # Combinación ponderada
+
 # Entrenamiento
 model = UNet().to(DEVICE)
-criterion = DiceBCELoss()
+criterion = FocalDiceLoss(alpha=0.8, gamma=2.0).to(DEVICE)
 optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 patience = 10
 best_loss = float('inf')
