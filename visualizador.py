@@ -21,32 +21,49 @@ class UNet(nn.Module):
                 nn.ReLU(inplace=True)
             )
 
-        self.enc1 = CBR(3, 64)
+        # Encoder con menos canales (para reducir overfitting)
+        self.enc1 = CBR(3, 32)  # Mantenemos 32 canales como en tu versión original
         self.pool1 = nn.MaxPool2d(2)
-        self.enc2 = CBR(64, 128)
+        self.enc2 = CBR(32, 64)  # Reducido de 128 a 64
         self.pool2 = nn.MaxPool2d(2)
-        self.enc3 = CBR(128, 256)
+        self.enc3 = CBR(64, 128)  # Reducido de 256 a 128
         self.pool3 = nn.MaxPool2d(2)
 
-        self.bottleneck = CBR(256, 512)
+        # Bottleneck también reducido
+        self.bottleneck = CBR(128, 256)  # Reducido de 512 a 256
 
-        self.up3 = nn.ConvTranspose2d(512, 256, 2, stride=2)
-        self.dec3 = CBR(512, 256)
-        self.up2 = nn.ConvTranspose2d(256, 128, 2, stride=2)
-        self.dec2 = CBR(256, 128)
-        self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
-        self.dec1 = CBR(128, 64)
+        # Decoder - ajustamos las dimensiones para que coincidan
+        self.up3 = nn.ConvTranspose2d(256, 128, 2, stride=2)
+        self.dec3 = CBR(256, 128)  # 128*2 por la concatenación
+        
+        self.up2 = nn.ConvTranspose2d(128, 64, 2, stride=2)
+        self.dec2 = CBR(128, 64)  # 64*2 por la concatenación
+        
+        self.up1 = nn.ConvTranspose2d(64, 32, 2, stride=2)
+        self.dec1 = CBR(64, 32)   # 32*2 por la concatenación
 
-        self.final = nn.Conv2d(64, 1, kernel_size=1)
+        self.final = nn.Conv2d(32, 1, kernel_size=1)
 
     def forward(self, x):
-        e1 = self.enc1(x)
-        e2 = self.enc2(self.pool1(e1))
-        e3 = self.enc3(self.pool2(e2))
-        b = self.bottleneck(self.pool3(e3))
-        d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))
-        d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
-        d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
+        # Encoder
+        e1 = self.enc1(x)       # 32 canales
+        e2 = self.enc2(self.pool1(e1))  # 64 canales
+        e3 = self.enc3(self.pool2(e2))  # 128 canales
+        b = self.bottleneck(self.pool3(e3))  # 256 canales
+        
+        # Decoder
+        d3 = self.up3(b)        # 128 canales
+        d3 = torch.cat([d3, e3], dim=1)  # 128 + 128 = 256
+        d3 = self.dec3(d3)      # 128 canales
+        
+        d2 = self.up2(d3)       # 64 canales
+        d2 = torch.cat([d2, e2], dim=1)  # 64 + 64 = 128
+        d2 = self.dec2(d2)      # 64 canales
+        
+        d1 = self.up1(d2)       # 32 canales
+        d1 = torch.cat([d1, e1], dim=1)  # 32 + 32 = 64
+        d1 = self.dec1(d1)      # 32 canales
+        
         return torch.sigmoid(self.final(d1))
 
 # Dataset para visualizar las imágenes de test
