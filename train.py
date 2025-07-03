@@ -84,7 +84,7 @@ class UNet(nn.Module):
 
         self.enc1 = CBR(3, 32)
         self.pool1 = nn.MaxPool2d(2)
-        self.enc2 = CBR(64, 128)
+        self.enc2 = CBR(32, 128)
         self.pool2 = nn.MaxPool2d(2)
         self.enc3 = CBR(128, 256)
         self.pool3 = nn.MaxPool2d(2)
