@@ -14,8 +14,8 @@ from torch.utils.data import random_split
 IMAGE_DIR = '../database_petals'
 MASK_DIR = '../masks_petals'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-EPOCHS = 250
-BATCH_SIZE = 8
+EPOCHS = 500
+BATCH_SIZE = 4
 LR = 1e-4
 SAVE_PATH = 'unet_petals.pth'
 RANDOM_SEED = 42  # Semilla para mantener los conjuntos de validacion y prueba
@@ -143,25 +143,31 @@ class DiceBCELoss(nn.Module):
 class FocalDiceLoss(nn.Module):
     def __init__(self, alpha=0.8, gamma=2.0, smooth=1.0):
         super().__init__()
-        self.alpha = alpha  # Peso para las clases minoritarias (venas)
-        self.gamma = gamma  # Factor de enfoque (mayor gamma = más enfoque en ejemplos difíciles)
-        self.smooth = smooth  # Evita divisiones por cero
-        self.bce = nn.BCELoss(reduction='none')  # BCE sin reducción para aplicar Focal
+        self.alpha = alpha
+        self.gamma = gamma
+        self.smooth = smooth
+        self.bce = nn.BCELoss(reduction='none')
+        
+        # Variables para almacenar los valores actuales (opcional, para debug)
+        self.current_focal = 0.0
+        self.current_dice = 0.0
 
     def forward(self, preds, targets):
         # --- Focal Loss ---
         bce_loss = self.bce(preds, targets)
-        pt = torch.exp(-bce_loss)  # Probabilidad de predicción correcta
+        pt = torch.exp(-bce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
-        focal_loss = focal_loss.mean()  # Promedio sobre todos los píxeles
+        focal_loss = focal_loss.mean()
+        self.current_focal = focal_loss.item()  # Guardar para acceso externo
 
         # --- Dice Loss ---
         preds_flat = preds.view(-1)
         targets_flat = targets.view(-1)
         intersection = (preds_flat * targets_flat).sum()
         dice_loss = 1 - (2. * intersection + self.smooth) / (preds_flat.sum() + targets_flat.sum() + self.smooth)
+        self.current_dice = dice_loss.item()  # Guardar para acceso externo
 
-        return focal_loss + dice_loss  # Combinación ponderada
+        return focal_loss + dice_loss  # Pérdida total
 
 # Entrenamiento
 model = UNet().to(DEVICE)
@@ -174,7 +180,8 @@ counter = 0
 for epoch in range(EPOCHS):
     model.train()
     epoch_loss = 0
-
+    epoch_focal = 0
+    epoch_dice = 0
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training"):
         images, masks = images.to(DEVICE), masks.to(DEVICE)
 
@@ -186,8 +193,12 @@ for epoch in range(EPOCHS):
         optimizer.step()
 
         epoch_loss += loss.item()
+        epoch_focal += criterion.current_focal
+        epoch_dice += criterion.current_dice
 
     avg_loss = epoch_loss/len(train_loader)
+    avg_focal = epoch_focal/len(train_loader)
+    avg_dice = epoch_dice/len(train_loader)
 
     model.eval()
     val_loss = 0.0
@@ -198,7 +209,7 @@ for epoch in range(EPOCHS):
             val_loss += criterion(preds, masks).item()
 
     avg_val_loss = val_loss / len(val_loader)
-    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f} (Focal: {avg_focal:.4f}, Dice: {avg_dice:.4f})")
 
 
     # Guardar el mejor modelo
