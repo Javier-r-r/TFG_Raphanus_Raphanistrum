@@ -130,7 +130,7 @@ class UNet(nn.Module):
 class DiceBCELoss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.bce = nn.BCELoss(pos_weight=torch.tensor([10.0]).to(DEVICE))
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10.0]).to(DEVICE))
 
     def forward(self, preds, targets):
         smooth = 1.
@@ -174,7 +174,7 @@ model = UNet().to(DEVICE)
 criterion = DiceBCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode='min', patience=10, factor=0.5, verbose=True
+    optimizer, mode='min', patience=10, factor=0.5
 )
 patience = 10
 best_loss = float('inf')
@@ -183,8 +183,6 @@ counter = 0
 for epoch in range(EPOCHS):
     model.train()
     epoch_loss = 0
-    epoch_focal = 0
-    epoch_dice = 0
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training"):
         images, masks = images.to(DEVICE), masks.to(DEVICE)
 
@@ -196,12 +194,8 @@ for epoch in range(EPOCHS):
         optimizer.step()
 
         epoch_loss += loss.item()
-        epoch_focal += criterion.current_focal
-        epoch_dice += criterion.current_dice
 
     avg_loss = epoch_loss/len(train_loader)
-    avg_focal = epoch_focal/len(train_loader)
-    avg_dice = epoch_dice/len(train_loader)
 
     model.eval()
     val_loss = 0.0
@@ -212,7 +206,7 @@ for epoch in range(EPOCHS):
             val_loss += criterion(preds, masks).item()
 
     avg_val_loss = val_loss / len(val_loader)
-    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f} (Focal: {avg_focal:.4f}, Dice: {avg_dice:.4f})")
+    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
     
     scheduler.step(avg_val_loss)
 
