@@ -88,11 +88,15 @@ class UNet(nn.Module):
         self.pool2 = nn.MaxPool2d(2)
         self.enc3 = CBR(64, 128)  # Reducido de 256 a 128
         self.pool3 = nn.MaxPool2d(2)
-
+        self.enc4 = CBR(128,256)
+        self.pool4 = nn.MaxPool2d(2)
         # Bottleneck también reducido
-        self.bottleneck = CBR(128, 256)  # Reducido de 512 a 256
+        self.bottleneck = nn.Sequential(CBR(256, 512), nn.Dropout(0.5))  # Reducido de 512 a 256
 
         # Decoder - ajustamos las dimensiones para que coincidan
+        self.up4 = nn.ConvTranspose2d(512, 256, 2, stride=2)
+        self.dec4 = CBR(512, 256)
+
         self.up3 = nn.ConvTranspose2d(256, 128, 2, stride=2)
         self.dec3 = CBR(256, 128)  # 128*2 por la concatenación
         
@@ -109,10 +113,16 @@ class UNet(nn.Module):
         e1 = self.enc1(x)       # 32 canales
         e2 = self.enc2(self.pool1(e1))  # 64 canales
         e3 = self.enc3(self.pool2(e2))  # 128 canales
-        b = self.bottleneck(self.pool3(e3))  # 256 canales
+        e4 = self.enc4(self.pool3(e3))  # 256 canales
+
+        b = self.bottleneck(self.pool4(e4))  # 512 canales
         
         # Decoder
-        d3 = self.up3(b)        # 128 canales
+        d4 = self.up4(b)
+        d4 = torch.cat([d4, e4], dim=1)
+        d4 = self.dec4(d4)
+
+        d3 = self.up3(d4)        # 128 canales
         d3 = torch.cat([d3, e3], dim=1)  # 128 + 128 = 256
         d3 = self.dec3(d3)      # 128 canales
         
@@ -136,9 +146,12 @@ class DiceBCELoss(nn.Module):
         smooth = 1.
         preds = preds.view(-1)
         targets = targets.view(-1)
+        
         intersection = (preds * targets).sum()
         dice = (2. * intersection + smooth) / (preds.sum() + targets.sum() + smooth)
-        return 1 - dice + self.bce(preds, targets)
+        bce_loss = self.bce(preds, targets)
+
+        return (1 - dice + bce_loss), dice.item()
 
 class FocalDiceLoss(nn.Module):
     def __init__(self, alpha=0.8, gamma=2.0, smooth=1.0):
@@ -172,9 +185,10 @@ class FocalDiceLoss(nn.Module):
 # Entrenamiento
 model = UNet().to(DEVICE)
 criterion = DiceBCELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode='min', patience=10, factor=0.5
+    optimizer, mode='min', 
+patience=10, factor=0.5
 )
 patience = 10
 best_loss = float('inf')
@@ -183,30 +197,37 @@ counter = 0
 for epoch in range(EPOCHS):
     model.train()
     epoch_loss = 0
+    epoch_dice = 0
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training"):
         images, masks = images.to(DEVICE), masks.to(DEVICE)
 
         preds = model(images)
-        loss = criterion(preds, masks)
+        loss, dice = criterion(preds, masks)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         epoch_loss += loss.item()
+        epoch_dice += dice
 
     avg_loss = epoch_loss/len(train_loader)
+    avg_dice = epoch_dice/len(train_loader)
 
     model.eval()
     val_loss = 0.0
+    val_dice = 0.0
     with torch.no_grad():
         for images, masks in tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Validation"):
             images, masks = images.to(DEVICE), masks.to(DEVICE)
             preds = model(images)
-            val_loss += criterion(preds, masks).item()
+            loss, dice = criterion(preds, masks)
+            val_loss += loss.item()
+            val_dice += dice
 
     avg_val_loss = val_loss / len(val_loader)
-    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+    avg_val_dice = val_dice / len(val_loader)
+    print(f"Epoch {epoch+1} | Train Loss: {avg_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Train Dice: {avg_dice:.4f} | Val Dice: {avg_val_dice:.4f}")
     
     scheduler.step(avg_val_loss)
 
