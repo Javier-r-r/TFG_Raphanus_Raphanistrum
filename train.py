@@ -165,8 +165,9 @@ class UNet(nn.Module):
         d1 = torch.cat([d1, e1], dim=1)
         d1 = self.dec1(d1)
         
-        return torch.sigmoid(self.final(d1))
-    
+        #return torch.sigmoid(self.final(d1))
+        return self.final(d1)
+
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
@@ -255,28 +256,28 @@ class FocalDiceLoss(nn.Module):
         self.alpha = alpha
         self.gamma = gamma
         self.smooth = smooth
-        self.bce = nn.BCELoss(reduction='none')
+        self.bce = nn.BCEWithLogitsLoss(reduction='none')  # Cambiado a BCEWithLogitsLoss
         
-        # Variables para almacenar los valores actuales (opcional, para debug)
-        self.current_focal = 0.0
-        self.current_dice = 0.0
-
     def forward(self, preds, targets):
         # --- Focal Loss ---
-        bce_loss = self.bce(preds, targets)
+        bce_loss = self.bce(preds, targets)  # Ahora acepta logits directamente
         pt = torch.exp(-bce_loss)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
         focal_loss = focal_loss.mean()
-        self.current_focal = focal_loss.item()  # Guardar para acceso externo
-
-        # --- Dice Loss ---
-        preds_flat = preds.view(-1)
+        
+        # --- Dice Loss --- (ahora con sigmoid aplicado solo para el cálculo Dice)
+        preds_sigmoid = torch.sigmoid(preds)
+        preds_flat = preds_sigmoid.view(-1)
         targets_flat = targets.view(-1)
+        
         intersection = (preds_flat * targets_flat).sum()
-        dice_loss = 1 - (2. * intersection + self.smooth) / (preds_flat.sum() + targets_flat.sum() + self.smooth)
-        self.current_dice = dice_loss.item()  # Guardar para acceso externo
-
-        return focal_loss + dice_loss  # Pérdida total
+        dice_coeff = (2. * intersection + self.smooth) / (preds_flat.sum() + targets_flat.sum() + self.smooth)
+        dice_loss = 1 - dice_coeff
+        
+        # Pérdida total y coeficiente Dice
+        total_loss = focal_loss + dice_loss
+        
+        return total_loss, dice_coeff.item()
 
 # Entrenamiento
 model = UNet(
@@ -286,7 +287,7 @@ model = UNet(
     use_bn=True,         # Batch Normalization activado
     dropout_p=0.5        # Dropout para regularización
 ).to(DEVICE)
-criterion = ImprovedDiceBCELoss()
+criterion = FocalDiceLoss(alpha=0.8, gamma=0.2)
 optimizer = torch.optim.AdamW(model.parameters(), LR, weight_decay=2e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', 
