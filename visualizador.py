@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as T
 from PIL import Image
 import numpy as np
+import cv2
 
 # Modelo UNet
 import torch.nn as nn
@@ -179,29 +180,83 @@ model.eval()
 dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, FILES_TO_USE, transform)
 loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
+def postprocess_veins(pred, threshold=0.7, min_vein_width=2):
+    """
+    pred: Tensor [1, H, W] con valores 0-1
+    """
+    # Convertir a numpy
+    pred_np = pred.squeeze().cpu().numpy()
+    
+    # Umbralización adaptativa
+    binary = cv2.adaptiveThreshold(
+        (pred_np*255).astype(np.uint8), 
+        255, 
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 
+        101, 
+        -20
+    )
+    
+    # Operaciones morfológicas
+    kernel = np.ones((min_vein_width, min_vein_width), np.uint8)
+    processed = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    
+    # Eliminar pequeños componentes
+    n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+        processed, connectivity=8)
+    
+    # Mantener solo componentes con cierta longitud
+    result = np.zeros_like(processed)
+    for i in range(1, n_labels):
+        if stats[i, cv2.CC_STAT_AREA] > 10:  # Área mínima
+            result[labels == i] = 255
+    
+    return torch.from_numpy(result/255.0).float()
+
 # Guardar predicciones
 def save_predictions():
     with torch.no_grad():
         for img, mask, name in loader:
             img, mask = img.to(DEVICE), mask.to(DEVICE)
             pred = model(img)
-            pred_bin = (pred > 0.5).float()
+            
+            # Aplicar postprocesamiento específico para venas
+            pred_bin = postprocess_veins(pred)  # Usamos nuestra función de postprocesamiento
+            
+            # Convertir tensores a numpy arrays
+            img_np = img.squeeze().permute(1, 2, 0).cpu().numpy()
+            img_np = (img_np * 255).astype(np.uint8)  # Escalar a 0-255
+            
+            mask_np = mask.squeeze().cpu().numpy()
+            mask_np = (mask_np * 255).astype(np.uint8)  # Las máscaras ya deberían estar binarizadas
+            
+            pred_np = pred_bin.squeeze().cpu().numpy()
+            pred_np = (pred_np * 255).astype(np.uint8)  # Nuestro postprocesamiento ya devuelve 0/1
 
-            img_np = img.squeeze().permute(1, 2, 0).cpu().numpy() * 255
-            mask_np = mask.squeeze().cpu().numpy() * 255
-            pred_np = pred_bin.squeeze().cpu().numpy() * 255
+            # Crear imágenes PIL
+            img_pil = Image.fromarray(img_np)
+            
+            # Máscara de verdad terreno (ground truth)
+            mask_pil = Image.fromarray(mask_np, mode='L')
+            
+            # Predicción postprocesada
+            pred_pil = Image.fromarray(pred_np, mode='L')
 
-            # Convertir a imagen
-            img_pil = Image.fromarray(img_np.astype(np.uint8))
-            mask_pil = Image.fromarray(mask_np.astype(np.uint8), mode='L')
-            pred_pil = Image.fromarray(pred_np.astype(np.uint8), mode='L')
-
+            # Guardar con nombres descriptivos
             base_name = os.path.splitext(name[0])[0]
             img_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_input.png"))
             mask_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_gt.png"))
             pred_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_pred.png"))
 
-            print(f"Guardadas predicciones para {name[0]}")
+            # Opcional: Guardar una versión superpuesta para visualización
+            overlay = Image.blend(
+                img_pil.convert("RGBA"),
+                Image.fromarray(np.stack([pred_np]*3, axis=-1)).convert("RGBA"),
+                alpha=0.4
+            )
+            overlay.save(os.path.join(OUTPUT_DIR, f"{base_name}_overlay.png"))
+
+            print(f"Imágenes guardadas para {name[0]}")
 
 # Guardar las imagenes
 save_predictions()
