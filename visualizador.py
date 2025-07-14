@@ -219,44 +219,23 @@ def save_predictions():
         for img, mask, name in loader:
             img, mask = img.to(DEVICE), mask.to(DEVICE)
             pred = model(img)
-            
-            # Aplicar postprocesamiento específico para venas
-            pred_bin = postprocess_veins(pred)  # Usamos nuestra función de postprocesamiento
-            
-            # Convertir tensores a numpy arrays
-            img_np = img.squeeze().permute(1, 2, 0).cpu().numpy()
-            img_np = (img_np * 255).astype(np.uint8)  # Escalar a 0-255
-            
-            mask_np = mask.squeeze().cpu().numpy()
-            mask_np = (mask_np * 255).astype(np.uint8)  # Las máscaras ya deberían estar binarizadas
-            
-            pred_np = pred_bin.squeeze().cpu().numpy()
-            pred_np = (pred_np * 255).astype(np.uint8)  # Nuestro postprocesamiento ya devuelve 0/1
+            pred_bin = (pred > 0.5).float()
 
-            # Crear imágenes PIL
-            img_pil = Image.fromarray(img_np)
-            
-            # Máscara de verdad terreno (ground truth)
-            mask_pil = Image.fromarray(mask_np, mode='L')
-            
-            # Predicción postprocesada
-            pred_pil = Image.fromarray(pred_np, mode='L')
+            img_np = img.squeeze().permute(1, 2, 0).cpu().numpy() * 255
+            mask_np = mask.squeeze().cpu().numpy() * 255
+            pred_np = pred_bin.squeeze().cpu().numpy() * 255
 
-            # Guardar con nombres descriptivos
+            # Convertir a imagen
+            img_pil = Image.fromarray(img_np.astype(np.uint8))
+            mask_pil = Image.fromarray(mask_np.astype(np.uint8), mode='L')
+            pred_pil = Image.fromarray(pred_np.astype(np.uint8), mode='L')
+
             base_name = os.path.splitext(name[0])[0]
             img_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_input.png"))
             mask_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_gt.png"))
             pred_pil.save(os.path.join(OUTPUT_DIR, f"{base_name}_pred.png"))
 
-            # Opcional: Guardar una versión superpuesta para visualización
-            overlay = Image.blend(
-                img_pil.convert("RGBA"),
-                Image.fromarray(np.stack([pred_np]*3, axis=-1)).convert("RGBA"),
-                alpha=0.4
-            )
-            overlay.save(os.path.join(OUTPUT_DIR, f"{base_name}_overlay.png"))
-
-            print(f"Imágenes guardadas para {name[0]}")
+            print(f"Guardadas predicciones para {name[0]}")
 
 # Guardar las imagenes
 save_predictions()

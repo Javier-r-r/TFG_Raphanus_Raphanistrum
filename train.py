@@ -287,7 +287,7 @@ model = UNet(
     use_bn=True,         # Batch Normalization activado
     dropout_p=0.5        # Dropout para regularización
 ).to(DEVICE)
-criterion = FocalDiceLoss(alpha=0.8, gamma=0.2)
+criterion = ImprovedDiceBCELoss()
 optimizer = torch.optim.AdamW(model.parameters(), LR, weight_decay=2e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', 
