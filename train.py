@@ -3,7 +3,7 @@ from glob import glob
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
-
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -22,10 +22,11 @@ RANDOM_SEED = 42  # Semilla para mantener los conjuntos de validacion y prueba
 
 # Dataset personalizado
 class PetalVeinDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, transform=None):
+    def __init__(self, image_dir, mask_dir, image_transform=None, mask_transform=None):
         self.images = sorted(glob(os.path.join(image_dir, '*.tif')))
         self.masks = sorted(glob(os.path.join(mask_dir, '*.png')))
-        self.transform = transform
+        self.mask_transform = mask_transform
+        self.image_transform = image_transform
 
     def __len__(self):
         return len(self.images)
@@ -34,25 +35,29 @@ class PetalVeinDataset(Dataset):
         image = Image.open(self.images[idx]).convert('RGB')
         mask = Image.open(self.masks[idx]).convert('L')
 
-        if self.transform:
-            image = self.transform(image)
-            mask = self.transform(mask)
+        if self.image_transform:
+            image = self.image_transform(image)
+        if self.mask_transform:
+            mask = self.mask_transform(mask)
 
         mask = (mask > 0).float()  # binarizar
 
         return image, mask
 
 # Transformaciones
-transform = T.Compose([
+image_transform = T.Compose([
     T.Resize((320, 448)),
     T.RandomAffine(degrees=1, translate=(0.01, 0.01), shear=2),
-    T.ElasticTransform(alpha=5.0, sigma=1.0),  # Más suave
-    T.ColorJitter(brightness=0.05, contrast=0.05),  # Menor variación
+    T.ElasticTransform(alpha=5.0, sigma=1.0),
+    T.ColorJitter(brightness=0.05, contrast=0.05),
     T.ToTensor()
 ])
-
+mask_transform = T.Compose([
+    T.Resize((320, 448)),
+    T.ToTensor()
+])
 # Dataset y DataLoader
-dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, transform)
+dataset = PetalVeinDataset(IMAGE_DIR, MASK_DIR, image_transform, mask_transform)
 # Especificar los tamaños de los diferentes conjuntos
 train_size = int(0.7*len(dataset))
 val_size = int(0.15*len(dataset))
@@ -179,76 +184,83 @@ class UNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 class VeinLoss(nn.Module):
-    def __init__(self, alpha=0.7, beta=0.3, gamma=2.0):
+    def __init__(self, alpha=0.7, beta=0.2, gamma=2.0):
         super().__init__()
-        self.alpha = alpha  # Peso para pérdida estructural
-        self.beta = beta    # Peso para pérdida de bordes
-        self.gamma = gamma  # Factor focal
-        
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
         self.bce = nn.BCEWithLogitsLoss(reduction='none')
         self.sobel = SobelFilter()
-        
+
     def forward(self, preds, targets):
-        # Pérdida estructural (Dice modificado)
+        # --- Dice Loss ---
         smooth = 1.0
-        preds_flat = preds.view(-1)
+        preds_sigmoid = torch.sigmoid(preds)
+        preds_flat = preds_sigmoid.view(-1)
         targets_flat = targets.view(-1)
-        
+
         intersection = (preds_flat * targets_flat).sum()
-        structural_loss = 1 - (2. * intersection + smooth) / (preds_flat.sum() + targets_flat.sum() + smooth)
-        
-        # Pérdida de bordes (énfasis en venas)
+        dice_coeff = (2. * intersection + smooth) / (preds_flat.sum() + targets_flat.sum() + smooth)
+        dice_loss = 1 - dice_coeff
+
+        # --- Edge Loss ---
         edge_targets = self.sobel(targets)
-        edge_preds = self.sobel(preds)
+        edge_preds = self.sobel(preds_sigmoid)
         edge_loss = F.mse_loss(edge_preds, edge_targets)
-        
-        # Pérdida focal para clase minoritaria (venas)
+
+        # --- Focal Loss ---
         bce_loss = self.bce(preds, targets)
         pt = torch.exp(-bce_loss)
         focal_loss = ((1 - pt) ** self.gamma * bce_loss).mean()
-        
-        return (self.alpha * structural_loss + 
-                self.beta * edge_loss + 
-                (1-self.alpha-self.beta) * focal_loss)
+
+        # --- Total loss ---
+        total_loss = self.alpha * dice_loss + self.beta * edge_loss + (1 - self.alpha - self.beta) * focal_loss
+
+        return total_loss, dice_coeff.item()
 
 class SobelFilter(nn.Module):
     def __init__(self):
         super().__init__()
-        self.kernel_x = torch.tensor([[[[1, 0, -1], [2, 0, -2], [1, 0, -1]]]]).float()
-        self.kernel_y = torch.tensor([[[[1, 2, 1], [0, 0, 0], [-1, -2, -1]]]]).float()
-    
+        self.kernel_x = torch.tensor([[[[1, 0, -1],
+                                        [2, 0, -2],
+                                        [1, 0, -1]]]], dtype=torch.float32)
+        self.kernel_y = torch.tensor([[[[1, 2, 1],
+                                        [0, 0, 0],
+                                        [-1, -2, -1]]]], dtype=torch.float32)
+
     def forward(self, x):
         # x: [B, 1, H, W]
         if x.shape[1] == 3:
-            x = x.mean(dim=1, keepdim=True)
-            
+            x = x.mean(dim=1, keepdim=True)  # Convertir RGB a gris si hace falta
         grad_x = F.conv2d(x, self.kernel_x.to(x.device), padding=1)
         grad_y = F.conv2d(x, self.kernel_y.to(x.device), padding=1)
-        return torch.sqrt(grad_x**2 + grad_y**2)
+        return torch.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-6)  # evitar sqrt(0)
 
 # Dice + BCE Loss
 class ImprovedDiceBCELoss(nn.Module):
-    def __init__(self, pos_weight=10.0):
+    def __init__(self, pos_weight=10.0, alpha=0.5, smooth=0.1):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]).to(DEVICE))
-        
+        self.alpha = alpha  # Peso para combinar losses
+        self.smooth = smooth  # Suavizado para Dice
+
     def forward(self, preds, targets):
-        smooth = 1.0
-        preds = preds.view(-1)
-        targets = targets.view(-1)
-        
-        # Calcular Dice
-        intersection = (preds * targets).sum()
-        dice_coeff = (2. * intersection + smooth) / (preds.sum() + targets.sum() + smooth)
+        preds_sigmoid = torch.sigmoid(preds)  # Para Dice
+        preds_flat = preds_sigmoid.view(-1)
+        targets_flat = targets.view(-1)
+
+        # Dice Loss
+        intersection = (preds_flat * targets_flat).sum()
+        dice_coeff = (2. * intersection + self.smooth) / (preds_flat.sum() + targets_flat.sum() + self.smooth)
         dice_loss = 1 - dice_coeff
-        
-        # Calcular BCE
+
+        # BCE Loss (ya maneja logits)
         bce_loss = self.bce(preds, targets)
-        
-        # Pérdida combinada (puedes ajustar los pesos)
-        total_loss = 0.5 * dice_loss + 0.5 * bce_loss
-        
-        return total_loss, dice_coeff.item()
+
+        # Combinación
+        total_loss = self.alpha * dice_loss + (1 - self.alpha) * bce_loss
+
+        return total_loss, dice_coeff.item(), bce_loss.item()
 
 class FocalDiceLoss(nn.Module):
     def __init__(self, alpha=0.8, gamma=2.0, smooth=1.0):
@@ -287,7 +299,7 @@ model = UNet(
     use_bn=True,         # Batch Normalization activado
     dropout_p=0.5        # Dropout para regularización
 ).to(DEVICE)
-criterion = ImprovedDiceBCELoss()
+criterion = VeinLoss(alpha=0.7, beta=0.2, gamma=2.0)
 optimizer = torch.optim.AdamW(model.parameters(), LR, weight_decay=2e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', 
