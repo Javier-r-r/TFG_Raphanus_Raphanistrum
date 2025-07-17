@@ -48,7 +48,6 @@ class PetalVeinDataset(Dataset):
 image_transform = T.Compose([
     T.Resize((320, 448)),
     T.RandomAffine(degrees=1, translate=(0.01, 0.01), shear=2),
-    T.ElasticTransform(alpha=5.0, sigma=1.0),
     T.ColorJitter(brightness=0.05, contrast=0.05),
     T.ToTensor()
 ])
@@ -77,111 +76,55 @@ train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_data, batch_size = BATCH_SIZE)
 
 # Reemplazar la clase UNet original por la nueva versión mejorada
-class UNet(nn.Module):
-    def __init__(self, input_ch=3, output_ch=1, base_ch=32, use_bn=True, dropout_p=0.5):
-        """
-        U-Net mejorada y configurable
-        
-        Args:
-            input_ch (int): Canales de entrada (3 para RGB)
-            output_ch (int): Canales de salida (1 para segmentación binaria)
-            base_ch (int): Canales base (default: 32)
-            use_bn (bool): Usar BatchNorm (True por defecto)
-            dropout_p (float): Probabilidad de Dropout (0.5 por defecto)
-        """
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class DoubleConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        
-        def CBR(in_channels, out_channels):
-            layers = [
-                nn.Conv2d(in_channels, out_channels, 3, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(out_channels, out_channels, 3, padding=1),
-                nn.ReLU(inplace=True)
-            ]
-            
-            if use_bn:
-                # Insertar BatchNorm después de cada Conv2d
-                layers.insert(1, nn.BatchNorm2d(out_channels))
-                layers.insert(4, nn.BatchNorm2d(out_channels))
-            
-            return nn.Sequential(*layers)
-        
-        # Encoder
-        self.enc1 = CBR(input_ch, base_ch)
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+class UNet(nn.Module):
+    def __init__(self, in_channels=3, out_channels=1):
+        super().__init__()
+        self.down1 = DoubleConv(in_channels, 64)
         self.pool1 = nn.MaxPool2d(2)
-        
-        self.enc2 = CBR(base_ch, base_ch*2)
+        self.down2 = DoubleConv(64, 128)
         self.pool2 = nn.MaxPool2d(2)
-        
-        self.enc3 = CBR(base_ch*2, base_ch*4)
+        self.down3 = DoubleConv(128, 256)
         self.pool3 = nn.MaxPool2d(2)
         
-        self.enc4 = CBR(base_ch*4, base_ch*8)
-        self.pool4 = nn.MaxPool2d(2)
+        self.bottleneck = DoubleConv(256, 512)
         
-        # Bottleneck con Dropout
-        self.bottleneck = CBR(base_ch*8, base_ch*16)
-        if dropout_p > 0:
-            self.bottleneck = nn.Sequential(self.bottleneck, nn.Dropout(dropout_p))
+        self.up3 = nn.ConvTranspose2d(512, 256, 2, stride=2)
+        self.conv3 = DoubleConv(512, 256)
+        self.up2 = nn.ConvTranspose2d(256, 128, 2, stride=2)
+        self.conv2 = DoubleConv(256, 128)
+        self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
+        self.conv1 = DoubleConv(128, 64)
         
-        # Decoder
-        self.up4 = nn.ConvTranspose2d(base_ch*16, base_ch*8, 2, stride=2)
-        self.dec4 = CBR(base_ch*16, base_ch*8)
-        
-        self.up3 = nn.ConvTranspose2d(base_ch*8, base_ch*4, 2, stride=2)
-        self.dec3 = CBR(base_ch*8, base_ch*4)
-        
-        self.up2 = nn.ConvTranspose2d(base_ch*4, base_ch*2, 2, stride=2)
-        self.dec2 = CBR(base_ch*4, base_ch*2)
-        
-        self.up1 = nn.ConvTranspose2d(base_ch*2, base_ch, 2, stride=2)
-        self.dec1 = CBR(base_ch*2, base_ch)
-        
-        # Capa final
-        self.final = nn.Conv2d(base_ch, output_ch, kernel_size=1)
-        
-        # Inicialización de pesos
-        self._initialize_weights()
-    
-    def forward(self, x):
-        # Encoder
-        e1 = self.enc1(x)
-        e2 = self.enc2(self.pool1(e1))
-        e3 = self.enc3(self.pool2(e2))
-        e4 = self.enc4(self.pool3(e3))
-        
-        # Bottleneck
-        b = self.bottleneck(self.pool4(e4))
-        
-        # Decoder con skip connections
-        d4 = self.up4(b)
-        d4 = torch.cat([d4, e4], dim=1)
-        d4 = self.dec4(d4)
-        
-        d3 = self.up3(d4)
-        d3 = torch.cat([d3, e3], dim=1)
-        d3 = self.dec3(d3)
-        
-        d2 = self.up2(d3)
-        d2 = torch.cat([d2, e2], dim=1)
-        d2 = self.dec2(d2)
-        
-        d1 = self.up1(d2)
-        d1 = torch.cat([d1, e1], dim=1)
-        d1 = self.dec1(d1)
-        
-        #return torch.sigmoid(self.final(d1))
-        return self.final(d1)
+        self.final = nn.Conv2d(64, out_channels, kernel_size=1)
 
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+    def forward(self, x):
+        d1 = self.down1(x)
+        d2 = self.down2(self.pool1(d1))
+        d3 = self.down3(self.pool2(d2))
+        b = self.bottleneck(self.pool3(d3))
+        up3 = self.conv3(torch.cat([self.up3(b), d3], dim=1))
+        up2 = self.conv2(torch.cat([self.up2(up3), d2], dim=1))
+        up1 = self.conv1(torch.cat([self.up1(up2), d1], dim=1))
+        return self.final(up1)
 
 class VeinLoss(nn.Module):
     def __init__(self, alpha=0.7, beta=0.2, gamma=2.0):
@@ -238,7 +181,7 @@ class SobelFilter(nn.Module):
 
 # Dice + BCE Loss
 class ImprovedDiceBCELoss(nn.Module):
-    def __init__(self, pos_weight=10.0, alpha=0.5, smooth=0.1):
+    def __init__(self, pos_weight=100.0, alpha=0.5, smooth=0.1):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]).to(DEVICE))
         self.alpha = alpha  # Peso para combinar losses
@@ -260,7 +203,7 @@ class ImprovedDiceBCELoss(nn.Module):
         # Combinación
         total_loss = self.alpha * dice_loss + (1 - self.alpha) * bce_loss
 
-        return total_loss, dice_coeff.item(), bce_loss.item()
+        return total_loss, dice_coeff.item()
 
 class FocalDiceLoss(nn.Module):
     def __init__(self, alpha=0.8, gamma=2.0, smooth=1.0):
@@ -293,13 +236,10 @@ class FocalDiceLoss(nn.Module):
 
 # Entrenamiento
 model = UNet(
-    input_ch=3,          # Canales de entrada (RGB)
-    output_ch=1,         # Segmentación binaria
-    base_ch=32,          # Canales base (puedes ajustar según necesidades)
-    use_bn=True,         # Batch Normalization activado
-    dropout_p=0.5        # Dropout para regularización
+    in_channels=3,          # Canales de entrada (RGB)
+    out_channels=1,         # Segmentación binaria
 ).to(DEVICE)
-criterion = VeinLoss(alpha=0.7, beta=0.2, gamma=2.0)
+criterion = ImprovedDiceBCELoss()
 optimizer = torch.optim.AdamW(model.parameters(), LR, weight_decay=2e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', 
