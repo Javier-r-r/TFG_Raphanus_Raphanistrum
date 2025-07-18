@@ -75,16 +75,16 @@ if device == "cpu":
 # Download the CamVid dataset, if needed
 # ----------------------------
 # Change this to your desired directory
-main_dir = "./examples/binary_segmentation_data/"
+#main_dir = "./examples/binary_segmentation_data/"
 
-data_dir = os.path.join(main_dir, "dataset")
-if not os.path.exists(data_dir):
-    logging.info("Loading data...")
-    os.system(f"git clone https://github.com/alexgkendall/SegNet-Tutorial {data_dir}")
-    logging.info("Done!")
+#data_dir = os.path.join(
+#if not os.path.exists(data_dir):
+    #logging.info("Loading data...")
+    #os.system(f"git clone https://github.com/alexgkendall/SegNet-Tutorial {data_dir}")
+    #logging.info("Done!")
 
 # Create a directory to store the output masks
-output_dir = os.path.join(main_dir, "output_images")
+output_dir = "output_images"
 os.makedirs(output_dir, exist_ok=True)
 
 # ----------------------------
