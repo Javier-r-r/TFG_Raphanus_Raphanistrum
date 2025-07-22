@@ -2,12 +2,10 @@ import numpy as np
 import os
 from PIL import Image
 import glob
+from sklearn.model_selection import train_test_split
 
 def cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras, tamaño=(128, 128)):
-    """
-    Carga imágenes (TIF) y máscaras (PNG) desde directorios
-    """
-    # Obtener listas de archivos
+    """Carga imágenes y máscaras desde directorios"""
     imagenes = sorted(glob.glob(os.path.join(ruta_imagenes, "*.tif")))
     mascaras = sorted(glob.glob(os.path.join(ruta_mascaras, "*.png")))
     
@@ -18,17 +16,17 @@ def cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras, tamaño=(128, 128))
     y = []
 
     for img_path, mask_path in zip(imagenes, mascaras):
-        # Cargar imagen TIF
+        # Cargar imagen
         img = Image.open(img_path).convert('RGB')
         img = img.resize(tamaño)
         img_array = np.array(img)
 
-        # Cargar máscara PNG (asegurando que sea binaria)
+        # Cargar máscara
         mask = Image.open(mask_path).convert('L')
         mask = mask.resize(tamaño)
         mask_array = np.array(mask)
         
-        # Normalizar máscara a 0-1 si es necesario
+        # Binarizar máscara si es necesario
         if mask_array.max() > 1:
             mask_array = (mask_array > 0).astype(np.uint8)
 
@@ -37,29 +35,36 @@ def cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras, tamaño=(128, 128))
 
     return np.array(X), np.expand_dims(np.array(y), axis=-1)
 
-def generar_conjuntos_segmentacion(ruta_imagenes, ruta_mascaras):
-    """
-    Genera y guarda los conjuntos de datos
-    """
+def generar_conjuntos_multiples(ruta_imagenes, ruta_mascaras, n_conjuntos=3):
+    """Genera n conjuntos diferentes de datos divididos aleatoriamente"""
     X, y = cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras)
     
-    # Dividir los datos (aquí puedes implementar tu lógica de división)
-    # Ejemplo simple: 70% train, 15% val, 15% test
-    from sklearn.model_selection import train_test_split
+    for i in range(n_conjuntos):
+        random_state = 42 + i  
+        
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y, test_size=0.3, random_state=random_state
+        )
+        
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=0.5, random_state=random_state
+        )
+        
+        # Guardar cada conjunto individualmente
+        np.savez(
+            f"conjunto_{i+1}.npz",
+            X_train=X_train,
+            X_val=X_val,
+            X_test=X_test,
+            y_train=y_train,
+            y_val=y_val,
+            y_test=y_test
+        )
     
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=42)
-    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
-    
-    # Guardar los conjuntos
-    np.save("X_train.npy", X_train)
-    np.save("y_train.npy", y_train)
-    np.save("X_val.npy", X_val)
-    np.save("y_val.npy", y_val)
-    np.save("X_test.npy", X_test)
-    np.save("y_test.npy", y_test)
+    print(f"Se generaron {n_conjuntos} conjuntos de datos (.npz)")
 
 # Uso:
-ruta_imagenes = "../database_petals"  # Directorio con imágenes .tif
-ruta_mascaras = "../masks_petals"       # Directorio con máscaras .png
-
-generar_conjuntos_segmentacion(ruta_imagenes, ruta_mascaras)
+if __name__ == "__main__":
+    ruta_imagenes = "../database_petals"
+    ruta_mascaras = "../masks_petals"
+    generar_conjuntos_multiples(ruta_imagenes, ruta_mascaras, n_conjuntos=3)

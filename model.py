@@ -42,7 +42,7 @@ The script includes the following steps:
 
 import logging
 import os
-
+import argparse
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -83,20 +83,28 @@ if device == "cpu":
     #os.system(f"git clone https://github.com/alexgkendall/SegNet-Tutorial {data_dir}")
     #logging.info("Done!")
 
-# Create a directory to store the output masks
-output_dir = "output_images"
-os.makedirs(output_dir, exist_ok=True)
-
 # ----------------------------
 # Define the hyperparameters
 # ----------------------------
-epochs_max = 200  # Number of epochs to train the model
+epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
 input_image_reshape = (320, 320)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
+# Añade esto al inicio del script, antes de las definiciones de hiperparámetros
+def parse_args():
+    parser = argparse.ArgumentParser(description='Entrenamiento de modelo de segmentación')
+    parser.add_argument('-arquitectura', '--arch', type=str, default='Unet', 
+                        help='Arquitectura del modelo (e.g., Unet, FPN)')
+    parser.add_argument('-encoder', '--encoder_name', type=str, default='resnet34', 
+                        help='Nombre del encoder (e.g., resnet34, resnet50)')
+    parser.add_argument('-loss', '--loss_fn', type=str, default='dice', 
+                        help='Función de pérdida (e.g., dice, bce, focal)')
+    parser.add_argument('-output', '--output_dir', type=str, default='output', 
+                        help='Nombre del directorio donde almacenar los resultados')
+    return parser.parse_args()
 
 # ----------------------------
 # Define a custom dataset class for the CamVid dataset
@@ -268,19 +276,13 @@ class CamVidModel(torch.nn.Module):
 
 
 def visualize(output_dir, image_filename, **images):
-    """PLot images in one row."""
-    n = len(images)
-    plt.figure(figsize=(16, 5))
-    for i, (name, image) in enumerate(images.items()):
-        plt.subplot(1, n, i + 1)
-        plt.xticks([])
-        plt.yticks([])
-        plt.title(" ".join(name.split("_")).title())
-        plt.imshow(image)
-    plt.show()
-    plt.savefig(os.path.join(output_dir, image_filename))
-    plt.close()
-
+    """Save each image separately without plotting."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for name, image in images.items():
+        # Guarda cada imagen individualmente
+        output_path = os.path.join(output_dir, f"{name}_{image_filename}")
+        plt.imsave(output_path, image)
 
 # Use multiple CPUs in parallel
 def train_and_evaluate_one_epoch(
@@ -295,6 +297,12 @@ def train_and_evaluate_one_epoch(
 
         optimizer.zero_grad()
         outputs = model(images)
+
+        # Asegurar que las máscaras tengan la forma correcta
+        if masks.dim() == 3:
+            masks = masks.unsqueeze(1)  # Añade dimensión de canal si es necesario
+
+        masks = masks.float()
 
         loss = loss_fn(outputs, masks)
         loss.backward()
@@ -314,6 +322,9 @@ def train_and_evaluate_one_epoch(
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
+            if masks.dim() == 3:
+                masks = masks.unsqueeze(1)
+            masks = masks.float()
             loss = loss_fn(outputs, masks)
 
             val_loss += loss.item()
@@ -449,13 +460,16 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 # ----------------------------
 # Cargar los conjuntos pre-generados (tu código)
 # ----------------------------
-conjuntos = np.load("conjuntos_segmentacion.npy", allow_pickle=True)  # Asegúrate de haber guardado los conjuntos antes
-
-# Obtener los 3 conjuntos
-(X_train1, X_val1, X_test1, y_train1, y_val1, y_test1) = conjuntos[0]
-(X_train2, X_val2, X_test2, y_train2, y_val2, y_test2) = conjuntos[1]
-(X_train3, X_val3, X_test3, y_train3, y_val3, y_test3) = conjuntos[2]
-
+conjuntos = []
+for i in range(3):
+    conjuntos.append((
+        np.load(f"X_train_set{i+1}.npy"),
+        np.load(f"X_val_set{i+1}.npy"),
+        np.load(f"X_test_set{i+1}.npy"),
+        np.load(f"y_train_set{i+1}.npy"),
+        np.load(f"y_val_set{i+1}.npy"),
+        np.load(f"y_test_set{i+1}.npy")
+    ))
 # ----------------------------
 # Create the dataloaders using the datasets
 # ----------------------------
@@ -502,7 +516,12 @@ conjuntos = np.load("conjuntos_segmentacion.npy", allow_pickle=True)  # Asegúra
 # ----------------------------
 max_iter = epochs_max
 
-model = CamVidModel("Unet", "resnet34", in_channels=3, out_classes=1)
+args = parse_args()
+
+output_dir = args.output_dir
+os.makedirs(output_dir, exist_ok=True)
+
+model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1)
 
 # Training loop
 model = model.to(device)
@@ -512,9 +531,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
 
 # Define the learning rate scheduler
 scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
-
-# Define the loss function
-loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 
 # Train the model
 # history = train_model(
@@ -541,18 +557,37 @@ loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 test_losses = []
 iou_scores = []
 
+# Configura la función de pérdida según el argumento
+if args.loss_fn.lower() == 'bce':
+    loss_fn = smp.losses.SoftBCEWithLogitsLoss()
+elif args.loss_fn.lower() == 'focal':
+    loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
+else:  # default es Dice
+    loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+
 for i in range(3):
     print(f"\n=== Entrenamiento {i+1} ===")
-    # Cargar el conjunto correspondiente
-    X_train, X_val, X_test = conjuntos[i][0], conjuntos[i][1], conjuntos[i][2]
-    y_train, y_val, y_test = conjuntos[i][3], conjuntos[i][4], conjuntos[i][5]
+    
+    # Cargar el conjunto correspondiente desde archivo .npz
+    conjunto = np.load(f"conjunto_{i+1}.npz")
+    
+    # Extraer los arrays
+    X_train = conjunto['X_train']
+    X_val = conjunto['X_val']
+    X_test = conjunto['X_test']
+    y_train = conjunto['y_train']
+    y_val = conjunto['y_val']
+    y_test = conjunto['y_test']
+    
+    # Verificar formas (opcional, para debug)
+    print(f"Formas - Train: {X_train.shape}, {y_train.shape}")
+    print(f"Formas - Val: {X_val.shape}, {y_val.shape}")
+    print(f"Formas - Test: {X_test.shape}, {y_test.shape}")
 
-    # Crear DataLoaders
+    # Crear DataLoaders (igual que antes)
     train_dataset = CustomDatasetFromArrays(
         X_train, y_train, augmentation=augmentation_train
     )
-
-    # Datos de validación/test SIN augmentation
     val_dataset = CustomDatasetFromArrays(
         X_val, y_val, augmentation=augmentation_val_test
     )
@@ -572,7 +607,7 @@ for i in range(3):
     history = train_model(model, train_loader, valid_loader, optimizer, scheduler, loss_fn, device, epochs_max)
     
     # Evaluar
-    test_loss, iou = test_model(model, f"outputs/exp_{i+1}", test_loader, loss_fn, device)
+    test_loss, iou = test_model(model, f"{args.output_dir}/exp_{i+1}", test_loader, loss_fn, device)
     print(f"Test Loss (Conjunto {i+1}): {test_loss:.4f}, IoU: {iou:.4f}")
 
     test_losses.append(test_loss)
@@ -597,7 +632,7 @@ df = pd.DataFrame({
     "Test_Loss": test_losses,
     "IoU": iou_scores
 })
-df.to_csv("outputs/metricas_entrenamientos.csv", index=False)
+df.to_csv("{args.output_dir}/metricas_entrenamientos.csv", index=False)
 
 # logging.info(f"Test Loss: {test_loss[0]}, IoU Score: {test_loss[1]}")
 # logging.info(f"The output masks are saved in {output_dir}.")
