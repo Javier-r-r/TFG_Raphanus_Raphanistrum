@@ -384,6 +384,18 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 
             outputs = model(images)
             loss = loss_fn(outputs, masks)
+            test_loss += loss.item()
+
+            prob_mask = outputs.sigmoid().squeeze(1)
+            pred_mask = (prob_mask > 0.5).long()  # Umbral 0.5 para clasificación binaria
+
+            batch_tp, batch_fp, batch_fn, batch_tn = smp.metrics.get_stats(
+                pred_mask, masks, mode="binary"
+            )
+            tp += batch_tp.sum().item()
+            fp += batch_fp.sum().item()
+            fn += batch_fn.sum().item()
+            tn += batch_tn.sum().item()
 
             for i, output in enumerate(outputs):
                 input = images[i].cpu().numpy().transpose(1, 2, 0)
@@ -397,19 +409,13 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                     binary_mask=output > 0.5,
                 )
 
-            test_loss += loss.item()
-
-            prob_mask = outputs.sigmoid().squeeze(1)
-            pred_mask = (prob_mask > 0.5).long()
-            batch_tp, batch_fp, batch_fn, batch_tn = smp.metrics.get_stats(
-                pred_mask, masks, mode="binary"
-            )
-            tp += batch_tp.sum().item()
-            fp += batch_fp.sum().item()
-            fn += batch_fn.sum().item()
-            tn += batch_tn.sum().item()
-
         test_loss_mean = test_loss / len(test_dataloader)
+        # Calcular métricas adicionales
+        precision = tp / (tp + fp + 1e-10)  # Evitar división por cero
+        recall = tp / (tp + fn + 1e-10)     # Sensibilidad (Recall)
+        specificity = tn / (tn + fp + 1e-10) # Especificidad
+        f1_score = 2 * (precision * recall) / (precision + recall + 1e-10)
+
         logging.info(f"Test Loss: {test_loss_mean:.2f}")
 
     iou_score = smp.metrics.iou_score(
@@ -420,7 +426,21 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
         reduction="micro",
     )
 
-    return test_loss_mean, iou_score.item()
+        # Devolver métricas en un diccionario
+    metrics = {
+        "test_loss": test_loss_mean,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "precision": precision,
+        "recall": recall,
+        "specificity": specificity,
+        "f1_score": f1_score,
+        "iou_score": iou_score,
+    }
+
+    return metrics
 
 
 # ----------------------------
@@ -558,6 +578,7 @@ scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=et
 # plt.close()
 test_losses = []
 iou_scores = []
+all_metrics = []
 
 # Configura la función de pérdida según el argumento
 if args.loss_fn.lower() == 'bce':
@@ -602,18 +623,24 @@ for i in range(3):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     # Reiniciar el modelo y optimizador para cada entrenamiento
-    model = CamVidModel("Unet", "resnet34", in_channels=3, out_classes=1).to(device)
+    model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1)
     optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
 
     # Entrenar
     history = train_model(model, train_loader, valid_loader, optimizer, scheduler, loss_fn, device, epochs_max)
     
     # Evaluar
-    test_loss, iou = test_model(model, f"{args.output_dir}/exp_{i+1}", test_loader, loss_fn, device)
-    print(f"Test Loss (Conjunto {i+1}): {test_loss:.4f}, IoU: {iou:.4f}")
+    metrics = test_model(model, f"{output_dir}/exp_{i+1}", test_loader, loss_fn, device)
+    print(f"Test Loss (Conjunto {i+1}): {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
 
-    test_losses.append(test_loss)
-    iou_scores.append(iou)
+    test_losses.append(metrics['test_loss'])
+    iou_scores.append(metrics['iou_score'])
+    all_metrics.append(metrics)
+    
+
+# Convertir a DataFrame y guardar en CSV
+df_metrics = pd.DataFrame(all_metrics)
+df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
 
 # Convertir a arrays de NumPy
 test_losses = np.array(test_losses)
