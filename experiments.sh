@@ -4,48 +4,50 @@
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
 rm -rf $OUTPUT_DIR
-mkdir -p $OUTPUT_DIR
-~/myenv/bin/activate
+mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}
+source ~/myenv/bin/activate
 
-# 1. Experimentos con encoder fijo (resnet34) y diferentes arquitecturas
+
+# 1. Experimentos variando arquitecturas (encoder fijo: resnet34)
 ENCODER="resnet34"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
 LOSS="dice"
 
-echo "=== Ejecutando experimentos con encoder fijo ($ENCODER) ==="
+echo "=== Ejecutando experimentos variando arquitecturas (encoder: $ENCODER) ==="
 for arch in "${ARCHITECTURES[@]}"; do
     echo "--- Probando arquitectura: $arch ---"
-    CMD="$BASE_CMD -arquitectura $arch -encoder $ENCODER -loss $LOSS -output $OUTPUT_DIR/${ENCODER}_${arch}_${LOSS}"
-    OUTPUT_FILE="$OUTPUT_DIR/${ENCODER}_${arch}_${LOSS}.log"
-    echo "Comando: $CMD" > $OUTPUT_FILE
-    $CMD >> $OUTPUT_FILE 2>&1
+    CMD="$BASE_CMD -arquitectura $arch -encoder $ENCODER -loss $LOSS -output $OUTPUT_DIR/arquitectura/${ENCODER}_${arch}_${LOSS}"
+    echo "Comando: $CMD" > "$OUTPUT_DIR/arquitectura/${ENCODER}_${arch}_${LOSS}.log"
+    $CMD >> "$OUTPUT_DIR/arquitectura/${ENCODER}_${arch}_${LOSS}.log" 2>&1
 done
 
-# 2. Experimentos con arquitectura fija (Unet) y diferentes encoders
+# 2. Experimentos variando encoders (arquitectura fija: Unet)
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
 
-echo "=== Ejecutando experimentos con arquitectura fija ($ARCH) ==="
+echo "=== Ejecutando experimentos variando encoders (arquitectura: $ARCH) ==="
 for encoder in "${ENCODERS[@]}"; do
     echo "--- Probando encoder: $encoder ---"
-    CMD="$BASE_CMD -arquitectura $ARCH -encoder $encoder -loss $LOSS -output $OUTPUT_DIR/${ENCODER}_${arch}_${LOSS}"
-    OUTPUT_FILE="$OUTPUT_DIR/${ARCH}_${encoder}_${LOSS}.log"
-    echo "Comando: $CMD" > $OUTPUT_FILE
-    $CMD >> $OUTPUT_FILE 2>&1
+    CMD="$BASE_CMD -arquitectura $ARCH -encoder $encoder -loss $LOSS -output $OUTPUT_DIR/encoders/${ARCH}_${encoder}_${LOSS}"
+    echo "Comando: $CMD" > "$OUTPUT_DIR/encoders/${ARCH}_${encoder}_${LOSS}.log"
+    $CMD >> "$OUTPUT_DIR/encoders/${ARCH}_${encoder}_${LOSS}.log" 2>&1
 done
 
-# 3. Experimentos con arquitectura y encoder fijos (Unet, resnet34) y diferentes losses
+# 3. Experimentos variando funciones de pérdida (arquitectura: Unet, encoder: resnet34)
 ARCH="Unet"
 ENCODER="resnet34"
 LOSSES=("dice" "bce" "focal")
 
-echo "=== Ejecutando experimentos con funciones de pérdida diferentes ==="
+echo "=== Ejecutando experimentos variando funciones de pérdida ==="
 for loss in "${LOSSES[@]}"; do
     echo "--- Probando función de pérdida: $loss ---"
-    CMD="$BASE_CMD -arquitectura $ARCH -encoder $ENCODER -loss $loss -output $OUTPUT_DIR/${ENCODER}_${arch}_${LOSS}"
-    OUTPUT_FILE="$OUTPUT_DIR/${ARCH}_${ENCODER}_${loss}.log"
-    echo "Comando: $CMD" > $OUTPUT_FILE
-    $CMD >> $OUTPUT_FILE 2>&1
+    CMD="$BASE_CMD -arquitectura $ARCH -encoder $ENCODER -loss $loss -output $OUTPUT_DIR/loss/${ARCH}_${ENCODER}_${loss}"
+    echo "Comando: $CMD" > "$OUTPUT_DIR/loss/${ARCH}_${ENCODER}_${loss}.log"
+    $CMD >> "$OUTPUT_DIR/loss/${ARCH}_${ENCODER}_${loss}.log" 2>&1
 done
 
-echo "Todos los experimentos han sido completados. Los resultados se encuentran en $OUTPUT_DIR/"
+echo "Todos los experimentos han sido completados."
+echo "Resultados organizados en:"
+echo "- Arquitecturas: $OUTPUT_DIR/arquitectura/"
+echo "- Encoders: $OUTPUT_DIR/encoders/"
+echo "- Funciones de pérdida: $OUTPUT_DIR/loss/"
