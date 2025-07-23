@@ -480,19 +480,6 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 # logging.info(f"Mask shape: {mask.shape}")
 
 # ----------------------------
-# Cargar los conjuntos pre-generados (tu código)
-# ----------------------------
-conjuntos = []
-for i in range(3):
-    conjuntos.append((
-        np.load(f"X_train_set{i+1}.npy"),
-        np.load(f"X_val_set{i+1}.npy"),
-        np.load(f"X_test_set{i+1}.npy"),
-        np.load(f"y_train_set{i+1}.npy"),
-        np.load(f"y_val_set{i+1}.npy"),
-        np.load(f"y_test_set{i+1}.npy")
-    ))
-# ----------------------------
 # Create the dataloaders using the datasets
 # ----------------------------
 # logging.info(f"Train size: {len(train_dataset)}")
@@ -518,9 +505,7 @@ for i in range(3):
 # # Visualize and save validation sample
 # sample = valid_dataset[0]
 # visualize(
-#     output_dir,
-#     "validation_sample.png",
-#     validation_image=sample[0].numpy().transpose(1, 2, 0),
+#     output_dir, "validation_sample.png", validation_image=sample[0].numpy().transpose(1, 2, 0), 
 #     validation_mask=sample[1].squeeze(),
 # )
 
@@ -623,13 +608,14 @@ for i in range(3):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     # Reiniciar el modelo y optimizador para cada entrenamiento
-    model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1)
+    model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
 
     # Entrenar
     history = train_model(model, train_loader, valid_loader, optimizer, scheduler, loss_fn, device, epochs_max)
     
     # Evaluar
+    os.makedirs(f"{output_dir}/exp_{i+1}", exist_ok=True)
     metrics = test_model(model, f"{output_dir}/exp_{i+1}", test_loader, loss_fn, device)
     print(f"Test Loss (Conjunto {i+1}): {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
 
@@ -661,7 +647,7 @@ df = pd.DataFrame({
     "Test_Loss": test_losses,
     "IoU": iou_scores
 })
-df.to_csv("{args.output_dir}/metricas_entrenamientos.csv", index=False)
+df.to_csv(f"{output_dir}/metricas_entrenamientos.csv", index=False)
 
 # logging.info(f"Test Loss: {test_loss[0]}, IoU Score: {test_loss[1]}")
 # logging.info(f"The output masks are saved in {output_dir}.")
