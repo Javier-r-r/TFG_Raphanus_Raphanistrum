@@ -92,7 +92,7 @@ epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
-input_image_reshape = (320, 320)  # Desired shape for the input images and masks
+input_image_reshape = (640, 640)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
 # Añade esto al inicio del script, antes de las definiciones de hiperparámetros
@@ -586,7 +586,7 @@ for i in range(3):
     y_train = conjunto['y_train']
     y_val = conjunto['y_val']
     y_test = conjunto['y_test']
-    
+
     # Verificar formas (opcional, para debug)
     print(f"Formas - Train: {X_train.shape}, {y_train.shape}")
     print(f"Formas - Val: {X_val.shape}, {y_val.shape}")
@@ -616,6 +616,9 @@ for i in range(3):
     
     # Evaluar
     os.makedirs(f"{output_dir}/exp_{i+1}", exist_ok=True)
+    np.savez(os.path.join(output_dir, f"exp_{i+1}", "mascaras_originales.npz"),
+         y_train=y_train, y_val=y_val, y_test=y_test)
+
     metrics = test_model(model, f"{output_dir}/exp_{i+1}", test_loader, loss_fn, device)
     print(f"Test Loss (Conjunto {i+1}): {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
 
