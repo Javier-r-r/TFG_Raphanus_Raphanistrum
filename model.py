@@ -286,6 +286,26 @@ class CamVidModel(torch.nn.Module):
         mask = self.model(image)
         return mask
 
+def visualize_samples(images, masks, output_dir, prefix="train", num_samples=3):
+    """Visualiza y guarda muestras de imágenes y máscaras."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for i in range(min(num_samples, len(images))):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        
+        # Mostrar imagen
+        img = images[i].transpose(1, 2, 0) if images[i].shape[0] == 3 else images[i][0]
+        ax1.imshow(img, cmap='gray')
+        ax1.set_title(f'Imagen {i}')
+        ax1.axis('off')
+        
+        # Mostrar máscara
+        ax2.imshow(masks[i], cmap='gray')
+        ax2.set_title(f'Máscara {i}')
+        ax2.axis('off')
+        
+        plt.savefig(os.path.join(output_dir, f"{prefix}_sample_{i}.png"))
+        plt.close()
 
 def visualize(output_dir, image_filename, **images):
     """Save each image separately without plotting."""
@@ -455,82 +475,6 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 
     return metrics
 
-
-# ----------------------------
-# Define the data directories and create the datasets
-# ----------------------------
-# x_train_dir = os.path.join(data_dir, "CamVid", "train")
-# y_train_dir = os.path.join(data_dir, "CamVid", "trainannot")
-
-# x_val_dir = os.path.join(data_dir, "CamVid", "val")
-# y_val_dir = os.path.join(data_dir, "CamVid", "valannot")
-
-# x_test_dir = os.path.join(data_dir, "CamVid", "test")
-# y_test_dir = os.path.join(data_dir, "CamVid", "testannot")
-
-# train_dataset = Dataset(
-#     x_train_dir,
-#     y_train_dir,
-#     input_image_reshape=input_image_reshape,
-#     foreground_class=foreground_class,
-# )
-# valid_dataset = Dataset(
-#     x_val_dir,
-#     y_val_dir,
-#     input_image_reshape=input_image_reshape,
-#     foreground_class=foreground_class,
-# )
-# test_dataset = Dataset(
-#     x_test_dir,
-#     y_test_dir,
-#     input_image_reshape=input_image_reshape,
-#     foreground_class=foreground_class,
-# )
-
-# image, mask = train_dataset[0]
-# logging.info(f"Unique values in mask: {np.unique(mask)}")
-# logging.info(f"Image shape: {image.shape}")
-# logging.info(f"Mask shape: {mask.shape}")
-
-# ----------------------------
-# Create the dataloaders using the datasets
-# ----------------------------
-# logging.info(f"Train size: {len(train_dataset)}")
-# logging.info(f"Valid size: {len(valid_dataset)}")
-# logging.info(f"Test size: {len(test_dataset)}")
-
-# train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
-# test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-# ----------------------------
-# Lets look at some samples
-# ----------------------------
-# Visualize and save train sample
-# sample = train_dataset[0]
-# visualize(
-#     output_dir,
-#     "train_sample.png",
-#     train_image=sample[0].numpy().transpose(1, 2, 0),
-#     train_mask=sample[1].squeeze(),
-# )
-
-# # Visualize and save validation sample
-# sample = valid_dataset[0]
-# visualize(
-#     output_dir, "validation_sample.png", validation_image=sample[0].numpy().transpose(1, 2, 0), 
-#     validation_mask=sample[1].squeeze(),
-# )
-
-# # Visualize and save test sample
-# sample = test_dataset[0]
-# visualize(
-#     output_dir,
-#     "test_sample.png",
-#     test_image=sample[0].numpy().transpose(1, 2, 0),
-#     test_mask=sample[1].squeeze(),
-# )
-
 # ----------------------------
 # Create and train the model
 # ----------------------------
@@ -552,28 +496,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
 # Define the learning rate scheduler
 scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
 
-# Train the model
-# history = train_model(
-#     model,
-#     train_loader,
-#     valid_loader,
-#     optimizer,
-#     scheduler,
-#     loss_fn,
-#     device,
-#     epochs_max,
-# )
-
-# Visualize the training and validation losses
-# plt.figure(figsize=(10, 5))
-# plt.plot(history["train_losses"], label="Train Loss")
-# plt.plot(history["val_losses"], label="Validation Loss")
-# plt.xlabel("Epochs")
-# plt.ylabel("Loss")
-# plt.title("Training and Validation Losses")
-# plt.legend()
-# plt.savefig(os.path.join(output_dir, "train_val_losses.png"))
-# plt.close()
 test_losses = []
 iou_scores = []
 all_metrics = []
@@ -600,11 +522,6 @@ for i in range(3):
     y_val = conjunto['y_val']
     y_test = conjunto['y_test']
 
-    # Verificar formas (opcional, para debug)
-    print(f"Formas - Train: {X_train.shape}, {y_train.shape}")
-    print(f"Formas - Val: {X_val.shape}, {y_val.shape}")
-    print(f"Formas - Test: {X_test.shape}, {y_test.shape}")
-
     # Crear DataLoaders (igual que antes)
     train_dataset = CustomDatasetFromArrays(
         X_train, y_train, augmentation=augmentation_train
@@ -615,6 +532,24 @@ for i in range(3):
     test_dataset = CustomDatasetFromArrays(
         X_test, y_test, augmentation=augmentation_val_test
     )
+
+    # Visualizar algunas muestras ANTES del entrenamiento
+    # Tomamos las primeras muestras del dataset de entrenamiento
+    sample_indices = [0, 1, 2]  # Puedes cambiar estos índices
+    sample_images = []
+    sample_masks = []
+    
+    for idx in sample_indices:
+        img, mask = train_dataset[idx]
+        sample_images.append(img.numpy())
+        sample_masks.append(mask.numpy())
+    
+    # Crear directorio para las visualizaciones
+    vis_dir = f"{output_dir}/exp_{i+1}/pre_train_visualization"
+    os.makedirs(vis_dir, exist_ok=True)
+    
+    # Guardar las visualizaciones
+    visualize_samples(sample_images, sample_masks, vis_dir, prefix=f"exp_{i+1}")
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -664,6 +599,3 @@ df = pd.DataFrame({
     "IoU": iou_scores
 })
 df.to_csv(f"{output_dir}/metricas_entrenamientos.csv", index=False)
-
-# logging.info(f"Test Loss: {test_loss[0]}, IoU Score: {test_loss[1]}")
-# logging.info(f"The output masks are saved in {output_dir}.")
