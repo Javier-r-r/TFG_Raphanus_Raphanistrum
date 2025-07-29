@@ -92,7 +92,7 @@ epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
-input_image_reshape = (640, 640)  # Desired shape for the input images and masks
+input_image_reshape = (1200, 1200)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
 # Añade esto al inicio del script, antes de las definiciones de hiperparámetros
@@ -215,6 +215,12 @@ augmentation_train = A.Compose([
 # Transformaciones para validación/test (solo normalización)
 augmentation_val_test = A.Compose([])  # Sin aumentos, solo paso de normalización
 
+mask_augmentation = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+])
+
 class CustomDatasetFromArrays(BaseDataset):
     def __init__(self, X, y, augmentation=None):
         self.X = X
@@ -228,8 +234,12 @@ class CustomDatasetFromArrays(BaseDataset):
         if self.augmentation:
             transformed = self.augmentation(image=image, mask=mask)
             image = transformed["image"]
-            mask = transformed["mask"]
+            #mask = transformed["mask"]
+        if mask.ndim == 2:
+            mask = np.expand_dims(mask, axis=-1)
 
+        mask_transformed = mask_augmentation(image=mask)["image"]
+        mask = mask_transformed.squeeze()
         # Convertir a tensores y normalizar
         image = torch.tensor(image).float().permute(2, 0, 1) / 255.0  # CHW, [0, 1]
         mask = torch.tensor(mask).long()
@@ -383,6 +393,9 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
+            if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
+                 masks = masks.unsqueeze(1).float()
+
             loss = loss_fn(outputs, masks)
             test_loss += loss.item()
 
