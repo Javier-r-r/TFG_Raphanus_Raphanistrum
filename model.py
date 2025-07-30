@@ -234,12 +234,12 @@ class CustomDatasetFromArrays(BaseDataset):
         if self.augmentation:
             transformed = self.augmentation(image=image, mask=mask)
             image = transformed["image"]
-            #mask = transformed["mask"]
-        if mask.ndim == 2:
-            mask = np.expand_dims(mask, axis=-1)
+            mask = transformed["mask"]
+        #if mask.ndim == 2:
+            #mask = np.expand_dims(mask, axis=-1)
 
-        mask_transformed = mask_augmentation(image=mask)["image"]
-        mask = mask_transformed.squeeze()
+        #mask_transformed = mask_augmentation(image=mask)["image"]
+        #mask = mask_transformed.squeeze()
         # Convertir a tensores y normalizar
         image = torch.tensor(image).float().permute(2, 0, 1) / 255.0  # CHW, [0, 1]
         mask = torch.tensor(mask).long()
