@@ -111,95 +111,95 @@ def parse_args():
 # ----------------------------
 # Define a custom dataset class for the CamVid dataset
 # ----------------------------
-# class Dataset(BaseDataset):
-#     """
-#     A custom dataset class for binary segmentation tasks.
+class Dataset(BaseDataset):
+    """
+    A custom dataset class for binary segmentation tasks.
 
-#     Parameters:
-#     ----------
+    Parameters:
+    ----------
 
-#     - images_dir (str): Directory containing the input images.
-#     - masks_dir (str): Directory containing the corresponding masks.
-#     - input_image_reshape (tuple, optional): Desired shape for the input
-#       images and masks. Default is (320, 320).
-#     - foreground_class (int, optional): The class value in the mask to be
-#       considered as the foreground. Default is 1.
-#     - augmentation (callable, optional): A function/transform to apply to the
-#       images and masks for data augmentation.
-#     """
+    - images_dir (str): Directory containing the input images.
+    - masks_dir (str): Directory containing the corresponding masks.
+    - input_image_reshape (tuple, optional): Desired shape for the input
+      images and masks. Default is (320, 320).
+    - foreground_class (int, optional): The class value in the mask to be
+      considered as the foreground. Default is 1.
+    - augmentation (callable, optional): A function/transform to apply to the
+      images and masks for data augmentation.
+    """
 
-#     def __init__(
-#         self,
-#         images_dir,
-#         masks_dir,
-#         input_image_reshape=(320, 320),
-#         foreground_class=1,
-#         augmentation=None,
-#     ):
-#         self.ids = os.listdir(images_dir)
-#         self.images_filepaths = [
-#             os.path.join(images_dir, image_id) for image_id in self.ids
-#         ]
-#         self.masks_filepaths = [
-#             os.path.join(masks_dir, image_id) for image_id in self.ids
-#         ]
+    def __init__(
+        self,
+        images_dir,
+        masks_dir,
+        input_image_reshape=(320, 320),
+        foreground_class=1,
+        augmentation=None,
+    ):
+        self.ids = os.listdir(images_dir)
+        self.images_filepaths = [
+            os.path.join(images_dir, image_id) for image_id in self.ids
+        ]
+        self.masks_filepaths = [
+            os.path.join(masks_dir, image_id) for image_id in self.ids
+        ]
 
-#         self.input_image_reshape = input_image_reshape
-#         self.foreground_class = foreground_class
-#         self.augmentation = augmentation
+        self.input_image_reshape = input_image_reshape
+        self.foreground_class = foreground_class
+        self.augmentation = augmentation
 
-#     def __getitem__(self, i):
-#         """
-#         Retrieves the image and corresponding mask at index `i`.
+    def __getitem__(self, i):
+        """
+        Retrieves the image and corresponding mask at index `i`.
 
-#         Parameters:
-#         ----------
+        Parameters:
+        ----------
 
-#         - i (int): Index of the image and mask to retrieve.
-#         Returns:
-#         - A tuple containing:
-#             - image (torch.Tensor): The preprocessed image tensor of shape
-#             (1, input_image_reshape) - e.g., (1, 320, 320) - normalized to [0, 1].
-#             - mask_remap (torch.Tensor): The preprocessed mask tensor of
-#             shape input_image_reshape with values 0 or 1.
-#         """
-#         # Read the image
-#         image = cv2.imread(
-#             self.images_filepaths[i], cv2.IMREAD_GRAYSCALE
-#         )  # Read image as grayscale
-#         image = np.expand_dims(image, axis=-1)  # Add channel dimension
+        - i (int): Index of the image and mask to retrieve.
+        Returns:
+        - A tuple containing:
+            - image (torch.Tensor): The preprocessed image tensor of shape
+            (1, input_image_reshape) - e.g., (1, 320, 320) - normalized to [0, 1].
+            - mask_remap (torch.Tensor): The preprocessed mask tensor of
+            shape input_image_reshape with values 0 or 1.
+        """
+        # Read the image
+        image = cv2.imread(
+            self.images_filepaths[i], cv2.IMREAD_GRAYSCALE
+        )  # Read image as grayscale
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension
 
-#         # resize image to input_image_reshape
-#         image = cv2.resize(image, self.input_image_reshape)
+        # resize image to input_image_reshape
+        image = cv2.resize(image, self.input_image_reshape)
 
-#         # Read the mask in grayscale mode
-#         mask = cv2.imread(self.masks_filepaths[i], 0)
+        # Read the mask in grayscale mode
+        mask = cv2.imread(self.masks_filepaths[i], 0)
 
-#         # Update the mask: Set foreground_class to 1 and the rest to 0
-#         mask_remap = np.where(mask == self.foreground_class, 1, 0).astype(np.uint8)
+        # Update the mask: Set foreground_class to 1 and the rest to 0
+        mask_remap = np.where(mask == self.foreground_class, 1, 0).astype(np.uint8)
 
-#         # resize mask to input_image_reshape
-#         mask_remap = cv2.resize(mask_remap, self.input_image_reshape)
+        # resize mask to input_image_reshape
+        mask_remap = cv2.resize(mask_remap, self.input_image_reshape)
 
-#         if self.augmentation:
-#             sample = self.augmentation(image=image, mask=mask_remap)
-#             image, mask_remap = sample["image"], sample["mask"]
+        if self.augmentation:
+            sample = self.augmentation(image=image, mask=mask_remap)
+            image, mask_remap = sample["image"], sample["mask"]
 
-#         # Convert to PyTorch tensors
-#         # Add channel dimension if missing
-#         if image.ndim == 2:
-#             image = np.expand_dims(image, axis=-1)
+        # Convert to PyTorch tensors
+        # Add channel dimension if missing
+        if image.ndim == 2:
+            image = np.expand_dims(image, axis=-1)
 
-#         # HWC -> CHW and normalize to [0, 1]
-#         image = torch.tensor(image).float().permute(2, 0, 1) / 255.0
+        # HWC -> CHW and normalize to [0, 1]
+        image = torch.tensor(image).float().permute(2, 0, 1) / 255.0
 
-#         # Ensure mask is LongTensor
-#         mask_remap = torch.tensor(mask_remap).long()
+        # Ensure mask is LongTensor
+        mask_remap = torch.tensor(mask_remap).long()
 
-#         return image, mask_remap
+        return image, mask_remap
 
-#     def __len__(self):
-#         return len(self.ids)
+    def __len__(self):
+        return len(self.ids)
 
 
 # Transformaciones para imágenes y máscaras (sincronizadas)
@@ -523,14 +523,26 @@ for i in range(3):
     y_test = conjunto['y_test']
 
     # Crear DataLoaders (igual que antes)
-    train_dataset = CustomDatasetFromArrays(
-        X_train, y_train, augmentation=augmentation_train
+    train_dataset = Dataset(
+        images_dir="../database_petals",
+        masks_dir="../masks_petals",
+        input_image_reshape=(1200, 1200),  # Tamaño deseado
+        foreground_class=1,                # Clase a segmentar
+        augmentation=augmentation_train    # Transformaciones
     )
-    val_dataset = CustomDatasetFromArrays(
-        X_val, y_val, augmentation=augmentation_val_test
+    val_dataset  = Dataset(
+        images_dir="../database_petals",
+        masks_dir="../masks_petals",
+        input_image_reshape=(1200, 1200),  # Tamaño deseado
+        foreground_class=1,                # Clase a segmentar
+        augmentation=augmentation_val_test    # Transformaciones
     )
-    test_dataset = CustomDatasetFromArrays(
-        X_test, y_test, augmentation=augmentation_val_test
+    test_dataset =  Dataset(
+        images_dir="../database_petals",
+        masks_dir="../masks_petals",
+        input_image_reshape=(1200, 1200),  # Tamaño deseado
+        foreground_class=1,                # Clase a segmentar
+        augmentation=augmentation_val_test    # Transformaciones
     )
 
     # Visualizar algunas muestras ANTES del entrenamiento
