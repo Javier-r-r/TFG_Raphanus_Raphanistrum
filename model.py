@@ -631,103 +631,90 @@ elif args.loss_fn.lower() == 'focal':
 else:  # default es Dice
     loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 torch.cuda.empty_cache()
-for i in range(3):
-    print(f"\n=== Entrenamiento {i+1} ===")
-    
-    # Cargar el conjunto correspondiente desde archivo .npz
-    conjunto = np.load(f"conjunto_{i+1}.npz")
-    
-    # Extraer los arrays
-    X_train = conjunto['X_train']
-    X_val = conjunto['X_val']
-    X_test = conjunto['X_test']
-    y_train = conjunto['y_train']
-    y_val = conjunto['y_val']
-    y_test = conjunto['y_test']
 
-    # Configuración de paths usando el argumento data_split
-    train_images_dir = os.path.join(args.data_split, 'train', 'images')
-    train_masks_dir = os.path.join(args.data_split, 'train', 'masks')
-    val_images_dir = os.path.join(args.data_split, 'val', 'images')
-    val_masks_dir = os.path.join(args.data_split, 'val', 'masks')
-    test_images_dir = os.path.join(args.data_split, 'test', 'images')
-    test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
+print(f"\n=== Entrenamiento ===")
 
-    # Crear DataLoaders (igual que antes)
-    train_dataset = PetalVeinDataset(
-        images_dir=train_images_dir,
-        masks_dir=train_masks_dir,
-        input_image_reshape=input_image_reshape,
-        augmentation=augmentation_train
-    )
-    val_dataset = PetalVeinDataset(
-        images_dir=val_images_dir,
-        masks_dir=val_masks_dir,
-        input_image_reshape=input_image_reshape,
-        augmentation=augmentation_val_test
-    )
+# Configuración de paths usando el argumento data_split
+train_images_dir = os.path.join(args.data_split, 'train', 'images')
+train_masks_dir = os.path.join(args.data_split, 'train', 'masks')
+val_images_dir = os.path.join(args.data_split, 'val', 'images')
+val_masks_dir = os.path.join(args.data_split, 'val', 'masks')
+test_images_dir = os.path.join(args.data_split, 'test', 'images')
+test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
 
-    test_dataset = PetalVeinDataset(
-        images_dir=test_images_dir,
-        masks_dir=test_masks_dir,
-        input_image_reshape=input_image_reshape,
-        augmentation=augmentation_val_test
-    )
-    # Visualizar algunas muestras ANTES del entrenamiento
-    # Tomamos las primeras muestras del dataset de entrenamiento
-    sample_indices = [0, 1, 2]  # Puedes cambiar estos índices
-    sample_images = []
-    sample_masks = []
-    
-    for idx in sample_indices:
-        img, mask = train_dataset[idx]
-        sample_images.append(img.numpy())
-        sample_masks.append(mask.numpy())
-    
-    # Crear directorio para las visualizaciones
-    vis_dir = f"{output_dir}/exp_{i+1}/pre_train_visualization"
-    os.makedirs(vis_dir, exist_ok=True)
-    
-    # Guardar las visualizaciones
-    visualize_samples(sample_images, sample_masks, vis_dir, prefix=f"exp_{i+1}")
+# Crear DataLoaders (igual que antes)
+train_dataset = PetalVeinDataset(
+    images_dir=train_images_dir,
+    masks_dir=train_masks_dir,
+    input_image_reshape=input_image_reshape,
+    augmentation=augmentation_train
+)
+val_dataset = PetalVeinDataset(
+    images_dir=val_images_dir,
+    masks_dir=val_masks_dir,
+    input_image_reshape=input_image_reshape,
+    augmentation=augmentation_val_test
+)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+test_dataset = PetalVeinDataset(
+    images_dir=test_images_dir,
+    masks_dir=test_masks_dir,
+    input_image_reshape=input_image_reshape,
+    augmentation=augmentation_val_test
+)
+# Visualizar algunas muestras ANTES del entrenamiento
+# Tomamos las primeras muestras del dataset de entrenamiento
+sample_indices = [0, 1, 2]  # Puedes cambiar estos índices
+sample_images = []
+sample_masks = []
 
-    # Reiniciar el modelo y optimizador para cada entrenamiento
-    model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
+for idx in sample_indices:
+    img, mask = train_dataset[idx]
+    sample_images.append(img.numpy())
+    sample_masks.append(mask.numpy())
 
-    # Entrenar
-    history = train_model(
-        model, 
-        train_loader, 
-        valid_loader, 
-        optimizer, 
-        scheduler, 
-        loss_fn, 
-        device, 
-        epochs_max,
-        output_dir=args.output_dir  # Pasa el directorio de salida
-    )    
-    # Evaluar
-    os.makedirs(f"{output_dir}/exp_{i+1}", exist_ok=True)
-    np.savez(os.path.join(output_dir, f"exp_{i+1}", "mascaras_originales.npz"),
-         y_train=y_train, y_val=y_val, y_test=y_test)
+# Crear directorio para las visualizaciones
+vis_dir = f"{output_dir}//pre_train_visualization"
+os.makedirs(vis_dir, exist_ok=True)
 
-    metrics = test_model(
-        model, 
-        args.output_dir, 
-        test_loader, 
-        loss_fn, 
-        device
-    )
-    print(f"Test Loss (Conjunto {i+1}): {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
+# Guardar las visualizaciones
+visualize_samples(sample_images, sample_masks, vis_dir)
 
-    test_losses.append(metrics['test_loss'])
-    iou_scores.append(metrics['iou_score'])
-    all_metrics.append(metrics)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+# Reiniciar el modelo y optimizador para cada entrenamiento
+model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
+
+# Entrenar
+history = train_model(
+    model, 
+    train_loader, 
+    valid_loader, 
+    optimizer, 
+    scheduler, 
+    loss_fn, 
+    device, 
+    epochs_max,
+    output_dir=args.output_dir  # Pasa el directorio de salida
+)    
+# Evaluar
+
+metrics = test_model(
+    model, 
+    args.output_dir, 
+    test_loader, 
+    loss_fn, 
+    device
+)
+
+print(f"Test Loss: {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
+
+test_losses.append(metrics['test_loss'])
+iou_scores.append(metrics['iou_score'])
+all_metrics.append(metrics)
     
 
 # Convertir a DataFrame y guardar en CSV
@@ -753,4 +740,4 @@ df = pd.DataFrame({
     "Test_Loss": test_losses,
     "IoU": iou_scores
 })
-df.to_csv(f"{output_dir}/metricas_entrenamientos.csv", index=False)
+df.to_csv(f"{output_dir}/metricas_entrenamiento.csv", index=False)
