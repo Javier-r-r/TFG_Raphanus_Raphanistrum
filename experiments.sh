@@ -118,3 +118,5 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
 done
 
 echo "Resumen de resultados guardado en: $SUMMARY_FILE"
+touch "$HOME/experiments_done.flag"
+

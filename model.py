@@ -92,7 +92,7 @@ epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
-input_image_reshape = (320, 320)  # Desired shape for the input images and masks
+input_image_reshape = (640, 640)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
 # Añade esto al inicio del script, antes de las definiciones de hiperparámetros
@@ -304,9 +304,7 @@ augmentation_train = A.Compose([
     A.HorizontalFlip(p=0.5),  # Volteo horizontal con 50% de probabilidad
     A.VerticalFlip(p=0.5),    # Volteo vertical con 50% de probabilidad
     A.RandomRotate90(p=0.5),  # Rotación 90 grados
-    A.GaussianBlur(p=0.3),    # Desenfoque gaussiano
     A.RandomBrightnessContrast(p=0.2),  # Ajuste de brillo/contraste
-    # Añade más transformaciones según necesites
 ])
 
 # Transformaciones para validación/test (solo normalización)
@@ -438,10 +436,10 @@ def train_and_evaluate_one_epoch(
         outputs = model(images)
 
         # Asegurar que las máscaras tengan la forma correcta
-        if masks.dim() == 3:
-            masks = masks.unsqueeze(1)  # Añade dimensión de canal si es necesario
-
-        masks = masks.float()
+        if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
+            masks = masks.unsqueeze(1).float()  # Añade dimensión de canal si es necesario
+        else:
+            masks = masks.float()
 
         loss = loss_fn(outputs, masks)
         loss.backward()
@@ -461,9 +459,10 @@ def train_and_evaluate_one_epoch(
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
-            if masks.dim() == 3:
-                masks = masks.unsqueeze(1)
-            masks = masks.float()
+            if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
+                masks = masks.unsqueeze(1).float()
+            else:
+                masks = masks.float()
             loss = loss_fn(outputs, masks)
 
             val_loss += loss.item()
@@ -534,17 +533,23 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
+            # --- Manejo automático de dimensiones ---
             if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
-                 masks = masks.unsqueeze(1).float()
-
-            loss = loss_fn(outputs, masks)
+                # BCE: Añadir dimensión de canal y convertir a float
+                masks_for_loss = masks.unsqueeze(1).float()  # [B, 1, H, W]
+                pred_mask = (outputs.sigmoid() > 0.5).long().squeeze(1)  # [B, H, W]
+            else:
+                # Otras pérdidas (Dice, Focal): mantener dimensiones
+                masks_for_loss = masks.float()  # [B, H, W]
+                pred_mask = outputs.argmax(dim=1) if outputs.dim() == 4 else (outputs > 0.5).long()
+            loss = loss_fn(outputs, masks_for_loss)
             test_loss += loss.item()
 
-            prob_mask = outputs.sigmoid().squeeze(1)
-            pred_mask = (prob_mask > 0.5).long()  # Umbral 0.5 para clasificación binaria
-
+            masks_long = masks.long()  # Asegurar tipo entero
             batch_tp, batch_fp, batch_fn, batch_tn = smp.metrics.get_stats(
-                pred_mask, masks, mode="binary"
+                pred_mask, 
+                masks_long,  # <--- Tipo long requerido
+                mode="binary"
             )
             tp += batch_tp.sum().item()
             fp += batch_fp.sum().item()
@@ -736,7 +741,6 @@ print(f"Loss en Test: Media = {mean_loss:.4f}, Desviación Típica = {std_loss:.
 print(f"IoU: Media = {mean_iou:.4f}, Desviación Típica = {std_iou:.4f}")
 
 df = pd.DataFrame({
-    "Entrenamiento": [1, 2, 3],
     "Test_Loss": test_losses,
     "IoU": iou_scores
 })
