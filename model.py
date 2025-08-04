@@ -694,23 +694,6 @@ test_dataset = PetalVeinDataset(
     input_image_reshape=input_image_reshape,
     augmentation=augmentation_val_test
 )
-# Visualizar algunas muestras ANTES del entrenamiento
-# Tomamos las primeras muestras del dataset de entrenamiento
-sample_indices = [0, 1, 2]  # Puedes cambiar estos índices
-sample_images = []
-sample_masks = []
-
-for idx in sample_indices:
-    img, mask = train_dataset[idx]
-    sample_images.append(img.numpy())
-    sample_masks.append(mask.numpy())
-
-# Crear directorio para las visualizaciones
-vis_dir = f"{output_dir}//pre_train_visualization"
-os.makedirs(vis_dir, exist_ok=True)
-
-# Guardar las visualizaciones
-visualize_samples(sample_images, sample_masks, vis_dir)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
