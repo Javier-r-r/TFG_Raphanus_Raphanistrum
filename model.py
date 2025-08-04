@@ -470,6 +470,8 @@ def train_and_evaluate_one_epoch(
     avg_val_loss = val_loss / len(valid_dataloader)
     return avg_train_loss, avg_val_loss
 
+early_stop_patience = 10
+early_stop_min_delta = 0.001
 
 def train_model(
     model,
@@ -480,10 +482,16 @@ def train_model(
     loss_fn,
     device,
     epochs,
-    output_dir=None
+    output_dir=None,
+    patience=early_stop_patience,
+    min_delta=early_stop_min_delta
 ):
     train_losses = []
     val_losses = []
+
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
+    best_model_weights = None
 
     for epoch in range(epochs):
         avg_train_loss, avg_val_loss = train_and_evaluate_one_epoch(
@@ -501,7 +509,26 @@ def train_model(
         logging.info(
             f"Epoch {epoch + 1}/{epochs}, Training Loss: {avg_train_loss:.2f}, Validation Loss: {avg_val_loss:.2f}"
         )
-
+        # Early stopping logic
+        if avg_val_loss < best_val_loss - min_delta:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+            # Guardar los pesos del mejor modelo
+            best_model_weights = model.state_dict().copy()
+            
+            # Guardar el modelo si hay directorio de salida
+            if output_dir:
+                torch.save(model.state_dict(), os.path.join(output_dir, 'best_model.pth'))
+        else:
+            epochs_no_improve += 1
+            logging.info(f"No improvement for {epochs_no_improve} epochs")
+            
+            if epochs_no_improve >= patience:
+                logging.info(f"Early stopping triggered after {epoch + 1} epochs")
+                # Cargar los mejores pesos antes de terminar
+                if best_model_weights is not None:
+                    model.load_state_dict(best_model_weights)
+                break
     history = {
         "train_losses": train_losses,
         "val_losses": val_losses,
@@ -703,7 +730,9 @@ history = train_model(
     loss_fn, 
     device, 
     epochs_max,
-    output_dir=args.output_dir  # Pasa el directorio de salida
+    output_dir=args.output_dir,  # Pasa el directorio de salida
+    patience=early_stop_patience,
+    min_delta=early_stop_min_delta
 )    
 # Evaluar
 

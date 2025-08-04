@@ -120,3 +120,4 @@ done
 echo "Resumen de resultados guardado en: $SUMMARY_FILE"
 touch "$HOME/experiments_done.flag"
 
+python metricas.py --dir experiment_results
