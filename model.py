@@ -746,31 +746,9 @@ metrics = test_model(
 
 print(f"Test Loss: {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
 
-test_losses.append(metrics['test_loss'])
-iou_scores.append(metrics['iou_score'])
 all_metrics.append(metrics)
     
 
 # Convertir a DataFrame y guardar en CSV
 df_metrics = pd.DataFrame(all_metrics)
 df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
-
-# Convertir a arrays de NumPy
-test_losses = np.array(test_losses)
-iou_scores = np.array(iou_scores)
-
-# Calcular estadísticas
-mean_loss = np.mean(test_losses)
-std_loss = np.std(test_losses)
-mean_iou = np.mean(iou_scores)
-std_iou = np.std(iou_scores)
-
-print("\n=== Resumen Estadístico ===")
-print(f"Loss en Test: Media = {mean_loss:.4f}, Desviación Típica = {std_loss:.4f}")
-print(f"IoU: Media = {mean_iou:.4f}, Desviación Típica = {std_iou:.4f}")
-
-df = pd.DataFrame({
-    "Test_Loss": test_losses,
-    "IoU": iou_scores
-})
-df.to_csv(f"{output_dir}/metricas_entrenamiento.csv", index=False)
