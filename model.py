@@ -553,82 +553,117 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
     # Set the model to evaluation mode
     model.eval()
     test_loss = 0
-    tp, fp, fn, tn = 0, 0, 0, 0
+    
+    # Initialize lists to store metrics for each image
+    image_metrics = []
+    
     with torch.no_grad():
-        for batch in tqdm(test_dataloader, desc="Evaluating"):
+        for batch_idx, batch in enumerate(tqdm(test_dataloader, desc="Evaluating")):
             images, masks = batch
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
-            # --- Manejo automático de dimensiones ---
+            
+            # Handle different loss function requirements
             if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
-                # BCE: Añadir dimensión de canal y convertir a float
-                masks_for_loss = masks.unsqueeze(1).float()  # [B, 1, H, W]
-                pred_mask = (outputs.sigmoid() > 0.5).long().squeeze(1)  # [B, H, W]
+                masks_for_loss = masks.unsqueeze(1).float()
+                pred_mask = (outputs.sigmoid() > 0.5).long().squeeze(1)
             else:
-                # Otras pérdidas (Dice, Focal): mantener dimensiones
-                masks_for_loss = masks.float()  # [B, H, W]
+                masks_for_loss = masks.float()
                 pred_mask = outputs.argmax(dim=1) if outputs.dim() == 4 else (outputs > 0.5).long()
+            
             loss = loss_fn(outputs, masks_for_loss)
             test_loss += loss.item()
 
-            masks_long = masks.long()  # Asegurar tipo entero
-            batch_tp, batch_fp, batch_fn, batch_tn = smp.metrics.get_stats(
-                pred_mask, 
-                masks_long,  # <--- Tipo long requerido
-                mode="binary"
-            )
-            tp += batch_tp.sum().item()
-            fp += batch_fp.sum().item()
-            fn += batch_fn.sum().item()
-            tn += batch_tn.sum().item()
-
-            for i, output in enumerate(outputs):
-                input = images[i].cpu().numpy().transpose(1, 2, 0)
-                output = output.squeeze().cpu().numpy()
-
+            masks_long = masks.long()
+            
+            # Process each image in the batch individually
+            for i in range(images.shape[0]):
+                # Get stats for this single image
+                tp, fp, fn, tn = smp.metrics.get_stats(
+                    pred_mask[i].unsqueeze(0),  # Add batch dimension back
+                    masks_long[i].unsqueeze(0),
+                    mode="binary"
+                )
+                
+                # Calculate metrics for this image
+                precision = tp.sum().float() / (tp.sum() + fp.sum() + 1e-10)
+                recall = tp.sum().float() / (tp.sum() + fn.sum() + 1e-10)
+                iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+                
+                # Store metrics for this image
+                image_metrics.append({
+                    "image_id": f"batch_{batch_idx}_image_{i}",
+                    "precision": precision.item(),
+                    "recall": recall.item(),
+                    "iou_score": iou_score.item(),
+                    "tp": tp.sum().item(),
+                    "fp": fp.sum().item(),
+                    "fn": fn.sum().item(),
+                    "tn": tn.sum().item()
+                })
+                
+                # Save visualization for this image
+                input_img = images[i].cpu().numpy().transpose(1, 2, 0)
+                output = outputs[i].squeeze().cpu().numpy()
                 binary_mask = (output > 0.5).astype(np.uint8)
-
+                
                 visualize(
                     output_dir,
-                    f"output_{i}.png",
-                    input_image=input,
+                    f"output_{batch_idx}_{i}.png",
+                    input_image=input_img,
                     output_mask=output,
                     binary_mask=binary_mask,
                 )
 
         test_loss_mean = test_loss / len(test_dataloader)
-        # Calcular métricas adicionales
-        precision = tp / (tp + fp + 1e-10)  # Evitar división por cero
-        recall = tp / (tp + fn + 1e-10)     # Sensibilidad (Recall)
-        specificity = tn / (tn + fp + 1e-10) # Especificidad
-        f1_score = 2 * (precision * recall) / (precision + recall + 1e-10)
-
         logging.info(f"Test Loss: {test_loss_mean:.2f}")
 
-    iou_score = smp.metrics.iou_score(
-        torch.tensor([tp]),
-        torch.tensor([fp]),
-        torch.tensor([fn]),
-        torch.tensor([tn]),
-        reduction="micro",
-    )
-
-        # Devolver métricas en un diccionario
-    metrics = {
-        "test_loss": test_loss_mean,
-        "tp": tp,
-        "tn": tn,
-        "fp": fp,
-        "fn": fn,
-        "precision": precision,
-        "recall": recall,
-        "specificity": specificity,
-        "f1_score": f1_score,
-        "iou_score": iou_score,
+    # Calculate aggregate metrics across all images
+    df_individual = pd.DataFrame(image_metrics)
+    
+    # Calculate mean and std for each metric
+    aggregate_metrics = {
+        "mean_precision": df_individual["precision"].mean(),
+        "std_precision": df_individual["precision"].std(),
+        "mean_recall": df_individual["recall"].mean(),
+        "std_recall": df_individual["recall"].std(),
+        "mean_iou": df_individual["iou_score"].mean(),
+        "std_iou": df_individual["iou_score"].std(),
+        "total_tp": df_individual["tp"].sum(),
+        "total_fp": df_individual["fp"].sum(),
+        "total_fn": df_individual["fn"].sum(),
+        "total_tn": df_individual["tn"].sum(),
+        "test_loss": test_loss_mean
     }
-
-    return metrics
+    
+    # Calculate aggregate precision, recall, etc. from totals
+    aggregate_metrics["aggregate_precision"] = (
+        aggregate_metrics["total_tp"] / 
+        (aggregate_metrics["total_tp"] + aggregate_metrics["total_fp"] + 1e-10)
+    )
+    aggregate_metrics["aggregate_recall"] = (
+        aggregate_metrics["total_tp"] / 
+        (aggregate_metrics["total_tp"] + aggregate_metrics["total_fn"] + 1e-10)
+    )
+    aggregate_metrics["aggregate_iou"] = smp.metrics.iou_score(
+        torch.tensor([aggregate_metrics["total_tp"]]),
+        torch.tensor([aggregate_metrics["total_fp"]]),
+        torch.tensor([aggregate_metrics["total_fn"]]),
+        torch.tensor([aggregate_metrics["total_tn"]]),
+        reduction="micro"
+    ).item()
+    
+    # Save individual metrics to CSV
+    df_individual.to_csv(os.path.join(output_dir, "individual_metrics.csv"), index=False)
+    
+    # Save aggregate metrics to CSV
+    pd.DataFrame([aggregate_metrics]).to_csv(
+        os.path.join(output_dir, "aggregate_metrics.csv"), 
+        index=False
+    )
+    
+    return aggregate_metrics
 
 # ----------------------------
 # Create and train the model
