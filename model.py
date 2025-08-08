@@ -47,6 +47,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import json
 
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
@@ -72,18 +73,6 @@ logging.info(f"Using device: {device}")
 if device == "cpu":
     os.system("export OMP_NUM_THREADS=64")
     torch.set_num_threads(os.cpu_count())
-
-# ----------------------------
-# Download the CamVid dataset, if needed
-# ----------------------------
-# Change this to your desired directory
-#main_dir = "./examples/binary_segmentation_data/"
-
-#data_dir = os.path.join(
-#if not os.path.exists(data_dir):
-    #logging.info("Loading data...")
-    #os.system(f"git clone https://github.com/alexgkendall/SegNet-Tutorial {data_dir}")
-    #logging.info("Done!")
 
 # ----------------------------
 # Define the hyperparameters
@@ -316,34 +305,6 @@ mask_augmentation = A.Compose([
     A.RandomRotate90(p=0.5),
 ])
 
-class CustomDatasetFromArrays(BaseDataset):
-    def __init__(self, X, y, augmentation=None):
-        self.X = X
-        self.y = y
-        self.augmentation = augmentation  # Objeto albumentations.Compose
-
-    def __getitem__(self, i):
-        image = self.X[i]
-        mask = self.y[i].squeeze()  # Asegura máscara con forma (H, W)
-
-        if self.augmentation:
-            transformed = self.augmentation(image=image, mask=mask)
-            image = transformed["image"]
-            mask = transformed["mask"]
-        if mask.ndim == 2:
-            mask = np.expand_dims(mask, axis=-1)
-
-        mask_transformed = mask_augmentation(image=mask)["image"]
-        mask = mask_transformed.squeeze()
-        # Convertir a tensores y normalizar
-        image = torch.tensor(image).float().permute(2, 0, 1) / 255.0  # CHW, [0, 1]
-        mask = torch.tensor(mask).long()
-
-        return image, mask
-
-    def __len__(self):
-        return len(self.X)
-
 # Define a class for the CamVid model
 class CamVidModel(torch.nn.Module):
     """
@@ -367,6 +328,9 @@ class CamVidModel(torch.nn.Module):
         super().__init__()
         self.mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
         self.std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
+        # Si tienes archivos guardados con tus estadísticos:
+        if os.path.exists('dataset_mean.npy'):
+            self.mean = torch.tensor(np.load('dataset_mean.npy')).view(1, 3, 1, 1).to(device)
         self.model = smp.create_model(
             arch,
             encoder_name=encoder_name,
@@ -402,6 +366,53 @@ def visualize_samples(images, masks, output_dir, prefix="train", num_samples=3):
         
         plt.savefig(os.path.join(samples_dir, f"{prefix}_sample_{i}.png"))
         plt.close()
+
+def compute_dataset_statistics(images_dir, input_shape=(640, 640), batch_size=32):
+    """
+    Calcula la media y desviación estándar por canal para un conjunto de imágenes.
+    
+    Args:
+        images_dir (str): Directorio con las imágenes (.tif)
+        input_shape (tuple): Tamaño al que se redimensionarán las imágenes
+        batch_size (int): Tamaño del lote para el cálculo
+        
+    Returns:
+        mean (np.array): Media por canal [R, G, B]
+        std (np.array): Desviación estándar por canal [R, G, B]
+    """
+    # Obtener lista de imágenes
+    image_paths = [os.path.join(images_dir, f) for f in os.listdir(images_dir) 
+                  if f.lower().endswith('.tif')]
+    
+    # Variables para acumular estadísticos
+    pixel_sum = np.zeros(3)
+    pixel_sq_sum = np.zeros(3)
+    num_pixels = 0
+    
+    # Procesar imágenes por lotes
+    for i in tqdm(range(0, len(image_paths), batch_size)):
+        batch_paths = image_paths[i:i+batch_size]
+        batch_images = []
+        
+        for path in batch_paths:
+            # Leer imagen y redimensionar
+            img = cv2.imread(path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convertir a RGB
+            img = cv2.resize(img, input_shape)
+            batch_images.append(img)
+            
+        batch_images = np.stack(batch_images)
+        
+        # Acumular estadísticos
+        pixel_sum += np.sum(batch_images, axis=(0, 1, 2))
+        pixel_sq_sum += np.sum(batch_images**2, axis=(0, 1, 2))
+        num_pixels += batch_images.shape[0] * batch_images.shape[1] * batch_images.shape[2]
+    
+    # Calcular media y desviación estándar
+    mean = pixel_sum / num_pixels
+    std = np.sqrt((pixel_sq_sum / num_pixels) - mean**2)
+    
+    return mean, std
 
 def visualize(output_dir, image_filename, **images):
     """Save each image separately without plotting."""
@@ -484,7 +495,8 @@ def train_model(
     epochs,
     output_dir=None,
     patience=early_stop_patience,
-    min_delta=early_stop_min_delta
+    min_delta=early_stop_min_delta,
+    args=None
 ):
     train_losses = []
     val_losses = []
@@ -545,124 +557,90 @@ def train_model(
         plt.legend()
         plt.savefig(os.path.join(output_dir, 'loss_curve.png'))
         plt.close()
+    
+    if output_dir and args:
+        args_dict = vars(args)
+        with open(os.path.join(output_dir, 'config.json'), 'w') as f:
+            json.dump(args_dict, f, indent=4)
+    
+    if output_dir:
+        pd.DataFrame(history).to_csv(os.path.join(output_dir, "train_history.csv"), index=False)
 
     return history
 
-
 def test_model(model, output_dir, test_dataloader, loss_fn, device):
-    # Set the model to evaluation mode
     model.eval()
     test_loss = 0
-    
-    # Initialize lists to store metrics for each image
     image_metrics = []
-    
+    all_outputs = []
+    all_targets = []
+
+    os.makedirs(output_dir, exist_ok=True)
+
     with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(test_dataloader, desc="Evaluating")):
+        for batch_idx, batch in enumerate(tqdm(test_dataloader, desc="Evaluando")):
             images, masks = batch
             images, masks = images.to(device), masks.to(device)
-
             outputs = model(images)
-            
-            # Handle different loss function requirements
+
+            # Aplicar sigmoid a las salidas para obtener probabilidades
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).float()  # Umbralizar a 0.5
+
+            # Preparar máscaras para cálculo de pérdida
             if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
-                masks_for_loss = masks.unsqueeze(1).float()
-                pred_mask = (outputs.sigmoid() > 0.5).long().squeeze(1)
+                loss_input = outputs
+                target = masks.unsqueeze(1).float()  # Añadir dimensión de canal
             else:
-                masks_for_loss = masks.float()
-                pred_mask = outputs.argmax(dim=1) if outputs.dim() == 4 else (outputs > 0.5).long()
-            
-            loss = loss_fn(outputs, masks_for_loss)
+                loss_input = probs  # Usar probabilidades ya normalizadas
+                target = masks.float()  # Mantener forma (B, H, W)
+
+            loss = loss_fn(loss_input, target)
             test_loss += loss.item()
 
-            masks_long = masks.long()
-            
-            # Process each image in the batch individually
+            # Calcular métricas para cada imagen en el batch
             for i in range(images.shape[0]):
-                # Get stats for this single image
+                # Convertir a numpy para cálculo de métricas
+                pred_mask = preds[i].squeeze().cpu().numpy()
+                true_mask = masks[i].squeeze().cpu().numpy()
+
+                # Calcular métricas
                 tp, fp, fn, tn = smp.metrics.get_stats(
-                    pred_mask[i].unsqueeze(0),  # Add batch dimension back
-                    masks_long[i].unsqueeze(0),
-                    mode="binary"
+                    torch.tensor(pred_mask).unsqueeze(0).unsqueeze(0),
+                    torch.tensor(true_mask).unsqueeze(0).unsqueeze(0),
+                    mode="binary",
+                    threshold=0.5,
                 )
-                
-                # Calculate metrics for this image
-                precision = tp.sum().float() / (tp.sum() + fp.sum() + 1e-10)
-                recall = tp.sum().float() / (tp.sum() + fn.sum() + 1e-10)
+
                 iou_score = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
-                
-                # Store metrics for this image
+                precision = smp.metrics.precision(tp, fp, fn, tn, reduction="micro")
+                recall = smp.metrics.recall(tp, fp, fn, tn, reduction="micro")
+                f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+
                 image_metrics.append({
                     "image_id": f"batch_{batch_idx}_image_{i}",
+                    "test_loss": loss.item(),
+                    "iou_score": iou_score.item(),
                     "precision": precision.item(),
                     "recall": recall.item(),
-                    "iou_score": iou_score.item(),
-                    "tp": tp.sum().item(),
-                    "fp": fp.sum().item(),
-                    "fn": fn.sum().item(),
-                    "tn": tn.sum().item()
+                    "f1_score": f1_score.item(),
                 })
-                
-                # Save visualization for this image
-                input_img = images[i].cpu().numpy().transpose(1, 2, 0)
-                output = outputs[i].squeeze().cpu().numpy()
-                binary_mask = (output > 0.5).astype(np.uint8)
-                
-                visualize(
-                    output_dir,
-                    f"output_{batch_idx}_{i}.png",
-                    input_image=input_img,
-                    output_mask=output,
-                    binary_mask=binary_mask,
-                )
 
-        test_loss_mean = test_loss / len(test_dataloader)
-        logging.info(f"Test Loss: {test_loss_mean:.2f}")
-
-    # Calculate aggregate metrics across all images
-    df_individual = pd.DataFrame(image_metrics)
+    # Calcular métricas agregadas
+    test_loss_mean = test_loss / len(test_dataloader)
     
-    # Calculate mean and std for each metric
     aggregate_metrics = {
-        "mean_precision": df_individual["precision"].mean(),
-        "std_precision": df_individual["precision"].std(),
-        "mean_recall": df_individual["recall"].mean(),
-        "std_recall": df_individual["recall"].std(),
-        "mean_iou": df_individual["iou_score"].mean(),
-        "std_iou": df_individual["iou_score"].std(),
-        "total_tp": df_individual["tp"].sum(),
-        "total_fp": df_individual["fp"].sum(),
-        "total_fn": df_individual["fn"].sum(),
-        "total_tn": df_individual["tn"].sum(),
-        "test_loss": test_loss_mean
+        "test_loss": test_loss_mean,
+        "iou_score": np.mean([m["iou_score"] for m in image_metrics]),
+        "precision": np.mean([m["precision"] for m in image_metrics]),
+        "recall": np.mean([m["recall"] for m in image_metrics]),
+        "f1_score": np.mean([m["f1_score"] for m in image_metrics]),
     }
-    
-    # Calculate aggregate precision, recall, etc. from totals
-    aggregate_metrics["aggregate_precision"] = (
-        aggregate_metrics["total_tp"] / 
-        (aggregate_metrics["total_tp"] + aggregate_metrics["total_fp"] + 1e-10)
-    )
-    aggregate_metrics["aggregate_recall"] = (
-        aggregate_metrics["total_tp"] / 
-        (aggregate_metrics["total_tp"] + aggregate_metrics["total_fn"] + 1e-10)
-    )
-    aggregate_metrics["aggregate_iou"] = smp.metrics.iou_score(
-        torch.tensor([aggregate_metrics["total_tp"]]),
-        torch.tensor([aggregate_metrics["total_fp"]]),
-        torch.tensor([aggregate_metrics["total_fn"]]),
-        torch.tensor([aggregate_metrics["total_tn"]]),
-        reduction="micro"
-    ).item()
-    
-    # Save individual metrics to CSV
-    df_individual.to_csv(os.path.join(output_dir, "individual_metrics.csv"), index=False)
-    
-    # Save aggregate metrics to CSV
-    pd.DataFrame([aggregate_metrics]).to_csv(
-        os.path.join(output_dir, "aggregate_metrics.csv"), 
-        index=False
-    )
-    
+
+    # Guardar métricas
+    pd.DataFrame(image_metrics).to_csv(os.path.join(output_dir, "individual_metrics.csv"), index=False)
+    pd.DataFrame([aggregate_metrics]).to_csv(os.path.join(output_dir, "aggregate_metrics.csv"), index=False)
+
     return aggregate_metrics
 
 # ----------------------------
@@ -674,17 +652,6 @@ args = parse_args()
 
 output_dir = args.output_dir
 os.makedirs(output_dir, exist_ok=True)
-
-model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1)
-
-# Training loop
-model = model.to(device)
-
-# Define the Adam optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
-
-# Define the learning rate scheduler
-scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
 
 test_losses = []
 iou_scores = []
@@ -737,6 +704,17 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 # Reiniciar el modelo y optimizador para cada entrenamiento
 model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
+
+# Calcular estadísticos del conjunto de entrenamiento
+train_mean, train_std = compute_dataset_statistics(train_images_dir)
+
+print(f"Media del dataset: {train_mean}")
+print(f"Desviación estándar: {train_std}")
+
+# Guardar estos valores para uso futuro
+np.save(os.path.join(output_dir, 'dataset_mean.npy'), train_mean)
+np.save(os.path.join(output_dir, 'dataset_std.npy'), train_std)
 
 # Entrenar
 history = train_model(
@@ -750,10 +728,11 @@ history = train_model(
     epochs_max,
     output_dir=args.output_dir,  # Pasa el directorio de salida
     patience=early_stop_patience,
-    min_delta=early_stop_min_delta
-)    
-# Evaluar
+    min_delta=early_stop_min_delta,
+    args=args
+)
 
+# Evaluar
 metrics = test_model(
     model, 
     args.output_dir, 
@@ -762,10 +741,7 @@ metrics = test_model(
     device
 )
 
-print(f"Test Loss: {metrics['test_loss']:.4f}, IoU: {metrics['iou_score']:.4f}")
-
 all_metrics.append(metrics)
-    
 
 # Convertir a DataFrame y guardar en CSV
 df_metrics = pd.DataFrame(all_metrics)

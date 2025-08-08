@@ -81,18 +81,22 @@ echo "- Encoders: $OUTPUT_DIR/encoders/split[1-3]/"
 echo "- Funciones de pérdida: $OUTPUT_DIR/loss/split[1-3]/"
 
 # Generar resumen de resultados
-echo "Generando resumen de resultados..."
+echo "Generando resumen de resultados completos..."
 SUMMARY_FILE="$OUTPUT_DIR/experiment_summary.csv"
-echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score" > "$SUMMARY_FILE"
+DETAILED_FILE="$OUTPUT_DIR/experiment_detailed_summary.csv"
+
+# Encabezados mejorados
+echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,model_path" > "$SUMMARY_FILE"
+echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,epochs,train_time,model_path" > "$DETAILED_FILE"
 
 for experiment_type in "arquitectura" "encoders" "loss"; do
     for split_num in 1 2 3; do
-        for log_file in $OUTPUT_DIR/$experiment_type/split$split_num/*.log; do
-            if [ -f "$log_file" ]; then
-                # Extraer metadatos del nombre del archivo
-                filename=$(basename "$log_file" .log)
-                IFS='_' read -ra parts <<< "$filename"
-                
+        for exp_dir in $OUTPUT_DIR/$experiment_type/split$split_num/*/; do
+            if [ -d "$exp_dir" ]; then
+                # Extraer metadatos del nombre del directorio
+                dirname=$(basename "$exp_dir")
+                IFS='_' read -ra parts <<< "$dirname"
+
                 if [ "$experiment_type" == "arquitectura" ]; then
                     encoder=${parts[0]}
                     arch=${parts[1]}
@@ -106,18 +110,72 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                     encoder=${parts[1]}
                     loss=${parts[2]}
                 fi
-                
-                # Extraer métricas del archivo de log
-                test_loss=$(grep -oP "Test Loss: \K\d+\.\d+" "$log_file" || echo "NA")
-                iou_score=$(grep -oP "IoU: \K\d+\.\d+" "$log_file" || echo "NA")
-                
-                echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score" >> "$SUMMARY_FILE"
+
+                # Inicializar variables
+                test_loss="NA"
+                iou_score="NA"
+                precision="NA"
+                recall="NA"
+                f1_score="NA"
+                epochs="NA"
+                train_time="NA"
+
+                # Leer de metricas_detalladas.csv si existe
+                if [ -f "$exp_dir/metricas_detalladas.csv" ]; then
+                    metrics=$(tail -n 1 "$exp_dir/metricas_detalladas.csv")
+                    test_loss=$(echo "$metrics" | cut -d',' -f2)
+                    iou_score=$(echo "$metrics" | cut -d',' -f3)
+                    precision=$(echo "$metrics" | cut -d',' -f4)
+                    recall=$(echo "$metrics" | cut -d',' -f5)
+                    f1_score=$(echo "$metrics" | cut -d',' -f6)
+                fi
+
+                # Leer información adicional de config.json
+                if [ -f "$exp_dir/config.json" ]; then
+                    epochs=$(jq -r '.epochs_max' "$exp_dir/config.json" 2>/dev/null || echo "NA")
+                fi
+
+                # Leer tiempo de entrenamiento del log
+                if [ -f "$exp_dir/train_history.csv" ]; then
+                    train_time=$(tail -n 1 "$exp_dir/train_history.csv" | cut -d',' -f3)
+                fi
+
+                # Escribir en el resumen básico
+                echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$exp_dir" >> "$SUMMARY_FILE"
+
+                # Escribir en el resumen detallado
+                echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$epochs,$train_time,$exp_dir" >> "$DETAILED_FILE"
             fi
         done
     done
 done
 
-echo "Resumen de resultados guardado en: $SUMMARY_FILE"
-touch "$HOME/experiments_done.flag"
+# Generar también un archivo de resumen por splits
+SPLIT_SUMMARY="$OUTPUT_DIR/split_summary.csv"
+echo "split,architecture,encoder,loss,avg_iou,avg_precision,avg_recall" > "$SPLIT_SUMMARY"
 
-python metricas.py --dir experiment_results
+for split_num in 1 2 3; do
+    for arch in "${ARCHITECTURES[@]}"; do
+        for encoder in "${ENCODERS[@]}"; do
+            for loss in "${LOSSES[@]}"; do
+                # Calcular promedios para esta combinación
+                metrics=$(grep ",split$split_num,$arch,$encoder,$loss," "$SUMMARY_FILE" | awk -F',' 'BEGIN{OFS=",";count=0;iou=0;prec=0;rec=0}
+                {if($6!="NA"){count++; iou+=$7; prec+=$8; rec+=$9}}
+                END{if(count>0){print count, iou/count, prec/count, rec/count} else {print "0,NA,NA,NA"}}')
+
+                count=$(echo "$metrics" | cut -d',' -f1)
+                if [ "$count" -gt 0 ]; then
+                    avg_iou=$(echo "$metrics" | cut -d',' -f2)
+                    avg_precision=$(echo "$metrics" | cut -d',' -f3)
+                    avg_recall=$(echo "$metrics" | cut -d',' -f4)
+                    echo "split$split_num,$arch,$encoder,$loss,$avg_iou,$avg_precision,$avg_recall" >> "$SPLIT_SUMMARY"
+                fi
+            done
+        done
+    done
+done
+
+echo "Resumen básico guardado en: $SUMMARY_FILE"
+echo "Resumen detallado guardado en: $DETAILED_FILE"
+echo "Resumen por splits guardado en: $SPLIT_SUMMARY"
+touch "$HOME/experiments_done.flag"
