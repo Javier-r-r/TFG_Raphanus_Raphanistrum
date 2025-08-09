@@ -7,7 +7,7 @@ from PIL import Image
 import segmentation_models_pytorch as smp
 
 class RealTimeSegmenter:
-    def __init__(self, arch='Unet', encoder='resnet34', loss='dice', experiments_dir='experiment_results'):
+    def __init__(self, arch='Unet', encoder='resnet34', loss='dice', experiments_dir='resultados'):
         """
         Inicializa el segmentador en tiempo real.
         
