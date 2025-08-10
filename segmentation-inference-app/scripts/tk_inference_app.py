@@ -1,13 +1,15 @@
 """
-Tkinter desktop app for binary segmentation inference and mask-based metrics (scrollable).
+Tkinter desktop app for binary segmentation inference and mask-based metrics
+Styled to resemble the web UI (cards, header, tabs, badges, accent buttons).
 
 Features:
 - Load weights (.pth) and auto-read config.json, dataset_mean.npy next to it
 - Select image (PNG/JPG/TIFF), run segmentation, tune threshold & alpha
-- Preview Input, Mask, Overlay
+- Tabbed Preview: Input / Mask / Overlay
 - Save mask/overlay to PNG
 - Compute personalized metrics from predicted mask or any mask file
 - Scroll to access all controls on smaller screens
+- Scrollable Debug console with Clear
 
 Run (Windows):
   cd scripts
@@ -122,7 +124,7 @@ def color_overlay(rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, color=(
 
 
 # ---------------------------
-# Scrollable Frame
+# Scrollable Frame (outer page scroll)
 # ---------------------------
 
 class ScrollableFrame(ttk.Frame):
@@ -164,27 +166,116 @@ class ScrollableFrame(ttk.Frame):
 
 
 # ---------------------------
+# Theme
+# ---------------------------
+
+def create_theme(style: ttk.Style):
+    # Accent and neutrals inspired by the web UI
+    ACCENT = "#22c55e"        # green-500
+    ACCENT_DARK = "#16a34a"   # green-600
+    SURFACE = "#ffffff"
+    SURFACE_MUTED = "#f4f5f7"
+    BORDER = "#e5e7eb"
+    TEXT = "#111827"
+    TEXT_MUTED = "#6b7280"
+    HEADER_BG = "#111827"
+    HEADER_FG = "#ffffff"
+
+    try:
+        style.theme_use("clam")
+    except Exception:
+        pass
+
+    # Global
+    style.configure(".", font=("Segoe UI", 10))
+
+    # Header
+    style.configure("Header.TFrame", background=HEADER_BG)
+    style.configure("Header.TLabel", background=HEADER_BG, foreground=HEADER_FG, font=("Segoe UI Semibold", 12))
+
+    # Card-like frames
+    style.configure("Card.TFrame", background=SURFACE, relief="solid", borderwidth=1)
+    style.map("Card.TFrame", background=[("active", SURFACE)])
+    style.configure("CardTitle.TLabel", background=SURFACE, foreground=TEXT, font=("Segoe UI Semibold", 11))
+    style.configure("CardDesc.TLabel", background=SURFACE, foreground=TEXT_MUTED, font=("Segoe UI", 9))
+
+    # Buttons
+    style.configure("Accent.TButton", foreground="#ffffff", background=ACCENT)
+    style.map("Accent.TButton",
+              background=[("active", ACCENT_DARK), ("pressed", ACCENT_DARK)],
+              foreground=[("disabled", "#e5e7eb")])
+    style.configure("Secondary.TButton", foreground=TEXT, background=SURFACE_MUTED)
+    style.map("Secondary.TButton",
+              background=[("active", "#e5e7eb"), ("pressed", "#e5e7eb")])
+
+    # Labels
+    style.configure("Muted.TLabel", background=SURFACE, foreground=TEXT_MUTED)
+    style.configure("Badge.TLabel", background="#eef2f7", foreground=TEXT, padding=(6, 2))
+    style.configure("Section.TLabel", background=SURFACE, foreground=TEXT, font=("Segoe UI Semibold", 10))
+
+    # Notebook (tabs)
+    style.configure("Preview.TNotebook", background=SURFACE, borderwidth=0)
+    style.configure("Preview.TNotebook.Tab", padding=(12, 6))
+    style.map("Preview.TNotebook.Tab",
+              background=[("selected", SURFACE), ("!selected", SURFACE_MUTED)])
+
+    # Treeview (metrics table)
+    style.configure("Metrics.Treeview", background=SURFACE, fieldbackground=SURFACE, bordercolor=BORDER)
+    style.configure("Metrics.Treeview.Heading", font=("Segoe UI Semibold", 10))
+
+
+# ---------------------------
 # Tkinter App
 # ---------------------------
 
 class SegTkApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Segmentation Inference (Tk) - v1.0.1")
-        root.geometry("1100x800")
-        root.minsize(900, 650)
+        root.title("Segmentation Inference (Tk) - v1.1")
+        root.geometry("1100x820")
+        root.minsize(980, 680)
 
-        # Scrollable wrapper
-        self.scroll = ScrollableFrame(root)
-        self.scroll.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Apply theme
+        style = ttk.Style()
+        create_theme(style)
 
-        # Model/meta state
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Tk control variables must exist before building widgets that bind to them
         self.force_imagenet = tk.BooleanVar(value=False)
         self.default_resize_var = tk.StringVar(value="640")
         self.arch_var = tk.StringVar(value="Unet")
         self.encoder_var = tk.StringVar(value="resnet34")
         self.weights_path_var = tk.StringVar(value="")
+        self.threshold = tk.DoubleVar(value=0.5)
+        self.alpha = tk.DoubleVar(value=0.5)
+
+        # Scrollable wrapper (page-level)
+        self.scroll = ScrollableFrame(root)
+        self.scroll.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Header
+        header = ttk.Frame(self.scroll.container, style="Header.TFrame")
+        header.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(header, text="Segmentation Mask Inference", style="Header.TLabel").pack(side=tk.LEFT, padx=16, pady=10)
+        ttk.Label(header, text="v1.1", style="Header.TLabel").pack(side=tk.RIGHT, padx=16)
+
+        # Content grid (two columns like the web app)
+        content = ttk.Frame(self.scroll.container)
+        content.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=14, pady=14)
+        content.columnconfigure(0, weight=1)
+        content.columnconfigure(1, weight=1)
+
+        # Left column: Input & Controls (Card)
+        self._build_input_controls(content)
+
+        # Right column: Preview (Card with tabs)
+        self._build_preview_card(content)
+
+        # Bottom row: Metrics and Debug (two cards)
+        self._build_metrics_card(self.scroll.container)
+        self._build_debug_card(self.scroll.container)
+
+        # Model/meta state
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model: Optional[torch.nn.Module] = None
         self.debug_meta: Dict[str, Any] = {}
@@ -196,136 +287,196 @@ class SegTkApp:
         self.last_overlay: Optional[np.ndarray] = None
 
         # UI state
-        self.threshold = tk.DoubleVar(value=0.5)
-        self.alpha = tk.DoubleVar(value=0.5)
 
-        self.photo_input = None
-        self.photo_mask = None
-        self.photo_overlay = None
-
-        self._build_ui(self.scroll.container)
-
-    def _build_ui(self, parent: ttk.Frame):
-        # Top controls
-        top = ttk.Frame(parent, padding=10)
-        top.pack(side=tk.TOP, fill=tk.X)
-
-        ttk.Label(top, text="Weights (.pth):").grid(row=0, column=0, sticky="w")
-        e_weights = ttk.Entry(top, textvariable=self.weights_path_var, width=70)
-        e_weights.grid(row=0, column=1, sticky="we", padx=5)
-        ttk.Button(top, text="Browse", command=self.on_browse_weights).grid(row=0, column=2, padx=5)
-        ttk.Button(top, text="Load Model", command=self.on_load_model).grid(row=0, column=3, padx=5)
-
-        ttk.Label(top, text="Arch:").grid(row=1, column=0, sticky="w")
-        ttk.Entry(top, textvariable=self.arch_var, width=20).grid(row=1, column=1, sticky="w", padx=5)
-        ttk.Label(top, text="Encoder:").grid(row=1, column=2, sticky="e")
-        ttk.Entry(top, textvariable=self.encoder_var, width=20).grid(row=1, column=3, sticky="w", padx=5)
-
-        ttk.Label(top, text="Default Resize (px):").grid(row=2, column=0, sticky="w")
-        ttk.Entry(top, textvariable=self.default_resize_var, width=10).grid(row=2, column=1, sticky="w", padx=5)
-        ttk.Checkbutton(top, text="Force ImageNet stats", variable=self.force_imagenet).grid(row=2, column=2, sticky="w", padx=5)
-
-        # Actions
-        actions = ttk.Frame(parent, padding=(10, 0, 10, 10))
-        actions.pack(side=tk.TOP, fill=tk.X)
-        ttk.Button(actions, text="Open Image", command=self.on_open_image).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Segment", command=self.on_segment).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Save Mask", command=self.on_save_mask).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="Save Overlay", command=self.on_save_overlay).pack(side=tk.LEFT, padx=6)
-
-        # Sliders
-        sliders = ttk.Frame(parent, padding=(10, 0, 10, 10))
-        sliders.pack(side=tk.TOP, fill=tk.X)
-
-        thr_frame = ttk.Frame(sliders)
-        thr_frame.pack(side=tk.TOP, fill=tk.X, pady=4)
-        ttk.Label(thr_frame, text="Threshold:").pack(side=tk.LEFT)
-        ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold, orient=tk.HORIZONTAL, command=self._on_slider_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
-        self.label_thr = ttk.Label(thr_frame, text=f"{self.threshold.get():.2f}")
-        self.label_thr.pack(side=tk.LEFT)
-
-        alpha_frame = ttk.Frame(sliders)
-        alpha_frame.pack(side=tk.TOP, fill=tk.X, pady=4)
-        ttk.Label(alpha_frame, text="Overlay alpha:").pack(side=tk.LEFT)
-        ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha, orient=tk.HORIZONTAL, command=self._on_slider_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
-        self.label_alpha = ttk.Label(alpha_frame, text=f"{self.alpha.get():.2f}")
-        self.label_alpha.pack(side=tk.LEFT)
-
-        # Previews grid
-        previews = ttk.Frame(parent, padding=10)
-        previews.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        col_left = ttk.Frame(previews)
-        col_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        col_right = ttk.Frame(previews)
-        col_right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
-
-        ttk.Label(col_left, text="Input").pack(anchor="w")
-        self.label_input = ttk.Label(col_left, background="#222")
-        self.label_input.pack(fill=tk.BOTH, expand=True)
-
-        ttk.Label(col_right, text="Mask").pack(anchor="w")
-        self.label_mask = ttk.Label(col_right, background="#222")
-        self.label_mask.pack(fill=tk.BOTH, expand=True)
-
-        # Overlay full width
-        overlay_frame = ttk.Frame(parent, padding=10)
-        overlay_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        ttk.Label(overlay_frame, text="Overlay").pack(anchor="w")
-        self.label_overlay = ttk.Label(overlay_frame, background="#222")
-        self.label_overlay.pack(fill=tk.BOTH, expand=True)
-
-        # Metrics section (the buttons you couldn't reach)
-        metrics_section = ttk.Frame(parent, padding=10)
-        metrics_section.pack(side=tk.TOP, fill=tk.X)
-
-        ttk.Label(metrics_section, text="Metrics (from mask)").pack(anchor="w")
-        m_buttons = ttk.Frame(metrics_section)
-        m_buttons.pack(side=tk.TOP, fill=tk.X, pady=(4, 8))
-        ttk.Button(m_buttons, text="Metrics from predicted mask", command=self.on_metrics_from_pred).pack(side=tk.LEFT)
-        ttk.Button(m_buttons, text="Metrics from mask file...", command=self.on_metrics_from_file).pack(side=tk.LEFT, padx=8)
-
-        self.metrics_tree = ttk.Treeview(metrics_section, columns=("metric", "value"), show="headings", height=6)
-        self.metrics_tree.heading("metric", text="Metric")
-        self.metrics_tree.heading("value", text="Value")
-        self.metrics_tree.column("metric", width=380, anchor="w")
-        self.metrics_tree.column("value", width=120, anchor="e")
-        self.metrics_tree.pack(side=tk.TOP, fill=tk.X, expand=False)
-
-        # Debug info
-        debug_frame = ttk.Frame(parent, padding=10)
-        debug_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        ttk.Label(debug_frame, text="Debug").pack(anchor="w")
-
-        # Container for the debug Text with a vertical scrollbar
-        debug_container = ttk.Frame(debug_frame)
-        debug_container.pack(fill=tk.BOTH, expand=True)
-
-        self.debug_text = tk.Text(debug_container, height=10, wrap="word")
-        debug_scroll = ttk.Scrollbar(debug_container, orient="vertical", command=self.debug_text.yview)
-        self.debug_text.configure(yscrollcommand=debug_scroll.set)
-
-        # Layout: Text on the left, Scrollbar on the right
-        self.debug_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        debug_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        # Set initial labels for badges
+        self._update_badges()
 
         self._write_debug("Ready. Load model, open an image, then Segment.")
 
-    # ------------- UI callbacks -------------
+    # -------- UI building blocks --------
+
+    def _build_input_controls(self, parent: ttk.Frame):
+        card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        card.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 12))
+
+        # Title + description
+        ttk.Label(card, text="Input", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=6, sticky="w")
+        ttk.Label(card, text="Select model weights and an image, set threshold and alpha, then run segmentation.",
+                  style="CardDesc.TLabel").grid(row=1, column=0, columnspan=6, sticky="w", pady=(2, 10))
+
+        # Weights row
+        ttk.Label(card, text="Weights (.pth):", style="Section.TLabel").grid(row=2, column=0, sticky="w", pady=2)
+        self.e_weights = ttk.Entry(card, textvariable=self.weights_path_var, width=56)
+        self.e_weights.grid(row=2, column=1, columnspan=3, sticky="we", padx=6)
+        ttk.Button(card, text="Browse", command=self.on_browse_weights, style="Secondary.TButton").grid(row=2, column=4, padx=4)
+        ttk.Button(card, text="Load Model", command=self.on_load_model, style="Accent.TButton").grid(row=2, column=5, padx=2)
+
+        # Arch/Encoder row
+        ttk.Label(card, text="Arch:", style="Muted.TLabel").grid(row=3, column=0, sticky="w", pady=(6, 2))
+        ttk.Entry(card, textvariable=self.arch_var, width=18).grid(row=3, column=1, sticky="w", padx=6, pady=(6, 2))
+        ttk.Label(card, text="Encoder:", style="Muted.TLabel").grid(row=3, column=2, sticky="e", pady=(6, 2))
+        ttk.Entry(card, textvariable=self.encoder_var, width=18).grid(row=3, column=3, sticky="w", padx=6, pady=(6, 2))
+        ttk.Label(card, text="Default Resize (px):", style="Muted.TLabel").grid(row=3, column=4, sticky="e", pady=(6, 2))
+        ttk.Entry(card, textvariable=self.default_resize_var, width=10).grid(row=3, column=5, sticky="w", padx=4, pady=(6, 2))
+
+        # Actions row
+        row = 4
+        actions = ttk.Frame(card, style="Card.TFrame")
+        actions.grid(row=row, column=0, columnspan=6, sticky="we", pady=(8, 2))
+        ttk.Button(actions, text="Open Image", command=self.on_open_image, style="Secondary.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(actions, text="Segment", command=self.on_segment, style="Accent.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="Save Mask", command=self.on_save_mask, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="Save Overlay", command=self.on_save_overlay, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
+
+        # Sliders section
+        row += 1
+        ttk.Label(card, text="Controls", style="Section.TLabel").grid(row=row, column=0, columnspan=6, sticky="w", pady=(10, 4))
+        row += 1
+
+        # Threshold slider + badge
+        thr_frame = ttk.Frame(card)
+        thr_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
+        thr_frame.columnconfigure(1, weight=1)
+        ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
+        self.badge_thr = ttk.Label(thr_frame, text="0.50", style="Badge.TLabel")
+        self.badge_thr.grid(row=0, column=2, sticky="e")
+        ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
+                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+
+        # Alpha slider + badge
+        row += 1
+        alpha_frame = ttk.Frame(card)
+        alpha_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
+        alpha_frame.columnconfigure(1, weight=1)
+        ttk.Label(alpha_frame, text="Overlay alpha").grid(row=0, column=0, sticky="w")
+        self.badge_alpha = ttk.Label(alpha_frame, text="0.50", style="Badge.TLabel")
+        self.badge_alpha.grid(row=0, column=2, sticky="e")
+        ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha,
+                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+
+        for c in range(6):
+            card.columnconfigure(c, weight=1)
+
+    def _build_preview_card(self, parent: ttk.Frame):
+        card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        card.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=(0, 12))
+        ttk.Label(card, text="Preview", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(card, text="Input, mask, and overlay", style="CardDesc.TLabel").pack(anchor="w", pady=(2, 8))
+
+        # Notebook with three tabs
+        self.preview_nb = ttk.Notebook(card, style="Preview.TNotebook")
+        self.preview_nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Input Tab
+        tab_input = ttk.Frame(self.preview_nb)
+        self.preview_nb.add(tab_input, text="Input")
+        self.label_input = ttk.Label(tab_input, background="#222")
+        self.label_input.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # Mask Tab
+        tab_mask = ttk.Frame(self.preview_nb)
+        self.preview_nb.add(tab_mask, text="Mask")
+        self.label_mask = ttk.Label(tab_mask, background="#222")
+        self.label_mask.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # Overlay Tab
+        tab_overlay = ttk.Frame(self.preview_nb)
+        self.preview_nb.add(tab_overlay, text="Overlay")
+        self.label_overlay = ttk.Label(tab_overlay, background="#222")
+        self.label_overlay.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+    def _build_metrics_card(self, parent: ttk.Widget):
+        card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        card.pack(side=tk.TOP, fill=tk.X, padx=14, pady=(0, 12))
+        ttk.Label(card, text="Metrics (from mask)", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(card, text="Compute personalized metrics directly from a binary mask (0/255).",
+                  style="CardDesc.TLabel").pack(anchor="w", pady=(2, 8))
+
+        # Buttons row
+        btns = ttk.Frame(card)
+        btns.pack(side=tk.TOP, fill=tk.X, pady=(0, 8))
+        ttk.Button(btns, text="Metrics from predicted mask", command=self.on_metrics_from_pred, style="Accent.TButton").pack(side=tk.LEFT)
+        ttk.Button(btns, text="Metrics from mask file...", command=self.on_metrics_from_file, style="Secondary.TButton").pack(side=tk.LEFT, padx=8)
+
+        # Body: left preview, right table
+        body = ttk.Frame(card)
+        body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        # Left: preview
+        left = ttk.Frame(body)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 8))
+
+        ttk.Label(left, text="Metrics image", style="Section.TLabel").pack(anchor="w", pady=(0, 4))
+        self.metrics_preview_title = ttk.Label(left, text="No image selected", style="Muted.TLabel")
+        self.metrics_preview_title.pack(anchor="w", pady=(0, 6))
+
+        self.metrics_preview = ttk.Label(left, background="#222", relief="solid")
+        self.metrics_preview.pack(fill=tk.BOTH, expand=False)
+
+        # Right: table
+        right = ttk.Frame(body)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.metrics_tree = ttk.Treeview(right, columns=("metric", "value"), show="headings", height=12, style="Metrics.Treeview")
+        self.metrics_tree.heading("metric", text="Metric")
+        self.metrics_tree.heading("value", text="Value")
+        self.metrics_tree.column("metric", width=420, anchor="w")
+        self.metrics_tree.column("value", width=140, anchor="e")
+        self.metrics_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    def _build_debug_card(self, parent: ttk.Widget):
+        card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        card.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=14, pady=(0, 14))
+        header = ttk.Frame(card, style="Card.TFrame")
+        header.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(header, text="Debug", style="CardTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Button(header, text="Clear", command=self._clear_debug, style="Secondary.TButton").pack(side=tk.RIGHT)
+
+        # Debug console with scrollbar
+        dbg_container = ttk.Frame(card)
+        dbg_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.debug_text = tk.Text(dbg_container, height=10, wrap="word")
+        dbg_scroll = ttk.Scrollbar(dbg_container, orient="vertical", command=self.debug_text.yview)
+        self.debug_text.configure(yscrollcommand=dbg_scroll.set)
+        self.debug_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        dbg_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # -------- UI helpers --------
+
+    def _clear_debug(self):
+        self.debug_text.delete("1.0", tk.END)
 
     def _write_debug(self, msg: str):
         self.debug_text.insert(tk.END, msg + "\n")
         self.debug_text.see(tk.END)
 
+    def _update_badges(self):
+        if hasattr(self, "badge_thr"):
+            self.badge_thr.config(text=f"{self.threshold.get():.2f}")
+        if hasattr(self, "badge_alpha"):
+            self.badge_alpha.config(text=f"{self.alpha.get():.2f}")
+
+    def _set_metrics_preview(self, pil_img: Image.Image, title: str):
+        # Keep a reasonable thumbnail size for the sidebar preview
+        img = pil_img.copy()
+        # If it's not grayscale, convert for a consistent look; masks are usually L
+        if img.mode != "L":
+            img = img.convert("L")
+        img.thumbnail((360, 240), Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        self.metrics_preview.config(image=photo)
+        self.metrics_preview.image = photo  # prevent GC
+        self.metrics_preview_title.config(text=title)
+
     def _on_slider_change(self, _evt=None):
-        self.label_thr.config(text=f"{self.threshold.get():.2f}")
-        self.label_alpha.config(text=f"{self.alpha.get():.2f}")
+        self._update_badges()
         if self.pil_input is not None and self.model is not None:
             try:
                 self.on_segment(redraw_only=True)
             except Exception:
                 pass
+
+    # -------- App actions --------
 
     def on_browse_weights(self):
         path = filedialog.askopenfilename(
@@ -350,14 +501,16 @@ class SegTkApp:
         self._write_debug(f"Loading model: arch={arch}, encoder={enc}")
 
         model = CamVidModel(arch=arch, encoder_name=enc, in_channels=3, out_classes=1)
-        model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
 
         mean_src, std_src = "imagenet", "imagenet"
-        if not self.force_imagenet.get():
-            mean, std = find_stats_in_dir(path)
-            mean_src, std_src = model.set_stats(mean, std, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        # Optional: dataset stats if present
+        mean, std = find_stats_in_dir(path)
+        if mean is not None or std is not None:
+            mean_src, std_src = model.set_stats(mean, std, device)
 
-        state = torch.load(path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        state = torch.load(path, map_location=device)
         load_res = model.load_state_dict(state, strict=False)
         model.eval()
 
@@ -384,7 +537,7 @@ class SegTkApp:
             pil = Image.open(path).convert("RGB")
             self.pil_input = pil
             self.np_input_rgb = np.array(pil)
-            self._show_preview(pil, self.label_input, max_size=(520, 360))
+            self._show_preview(pil, self.label_input, max_size=(1000, 600))
             self.last_mask = None
             self.last_overlay = None
             self.label_mask.config(image="")
@@ -392,6 +545,8 @@ class SegTkApp:
             self.photo_mask = None
             self.photo_overlay = None
             self._write_debug(f"Loaded image: {os.path.basename(path)} size={pil.size}")
+            # Switch to Input tab
+            self.preview_nb.select(0)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open image:\n{e}")
 
@@ -428,16 +583,19 @@ class SegTkApp:
             self.last_overlay = overlay
 
             pil_mask = Image.fromarray(mask)
-            self._show_preview(pil_mask, self.label_mask, max_size=(520, 360), is_mask=True)
+            self._show_preview(pil_mask, self.label_mask, max_size=(1000, 600), is_mask=True)
 
             pil_overlay = Image.fromarray(overlay)
-            self._show_preview(pil_overlay, self.label_overlay, max_size=(1050, 360))
+            self._show_preview(pil_overlay, self.label_overlay, max_size=(1000, 600))
 
             self._write_debug(f"Inference done. thr={thr:.2f} alpha={alpha:.2f}, out={original_size}")
+            if not redraw_only:
+                # Switch to Overlay tab after a full run (like the web app)
+                self.preview_nb.select(2)
         except Exception as e:
             messagebox.showerror("Error", f"Inference failed:\n{e}")
 
-    def _show_preview(self, pil_img: Image.Image, widget: ttk.Label, max_size=(520, 360), is_mask=False):
+    def _show_preview(self, pil_img: Image.Image, widget: ttk.Label, max_size=(1000, 600), is_mask=False):
         img = pil_img.copy()
         img.thumbnail(max_size, Image.Resampling.LANCZOS)
         if is_mask and img.mode != "L":
@@ -446,12 +604,8 @@ class SegTkApp:
             img = img.convert("RGB")
         photo = ImageTk.PhotoImage(img)
         widget.config(image=photo)
-        if widget is self.label_input:
-            self.photo_input = photo
-        elif widget is self.label_mask:
-            self.photo_mask = photo
-        else:
-            self.photo_overlay = photo
+        # Keep a reference on the widget to avoid GC
+        widget.image = photo
 
     def on_save_mask(self):
         if self.last_mask is None:
@@ -485,6 +639,11 @@ class SegTkApp:
             messagebox.showwarning("Metrics", "No predicted mask. Run segmentation first.")
             return
         try:
+            # Preview: predicted mask
+            pil_mask = Image.fromarray(self.last_mask if self.last_mask.ndim == 2 else cv2.cvtColor(self.last_mask, cv2.COLOR_BGR2GRAY))
+            self._set_metrics_preview(pil_mask, "Predicted mask")
+
+            # Compute metrics
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
             res = compute_metrics_from_mask(mask_bin)
             self._show_metrics(res)
@@ -502,6 +661,12 @@ class SegTkApp:
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if img is None:
                 raise RuntimeError("Unable to read mask file")
+
+            # Preview: file mask
+            pil = Image.fromarray(img)
+            self._set_metrics_preview(pil, f"File: {os.path.basename(path)}")
+
+            # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
             res = compute_metrics_from_mask(mask_bin)
             self._show_metrics(res)
