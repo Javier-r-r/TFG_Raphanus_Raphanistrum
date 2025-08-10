@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 import segmentation_models_pytorch as smp
 
+from metrics import compute_metrics_from_mask
+
 
 class CamVidModel(torch.nn.Module):
     """
@@ -88,7 +90,7 @@ def find_stats_in_dir(weights_path: str):
     return mean, std
 
 
-def build_model(weights_path: str, arch: Optional[str], encoder_name: Optional[str], device: torch.device):
+def build_model(weights_path: str, arch: Optional[str], encoder_name: Optional[str], device: torch.device, force_imagenet_stats: bool = False):
     """
     Build model, load stats and weights, return (model, debug_meta).
     """
@@ -100,8 +102,11 @@ def build_model(weights_path: str, arch: Optional[str], encoder_name: Optional[s
     model.to(device)
 
     # Stats
-    mean, std = find_stats_in_dir(weights_path)
-    mean_src, std_src = model.set_stats(mean, std, device)
+    if force_imagenet_stats:
+        mean_src, std_src = "imagenet", "imagenet"
+    else:
+        mean, std = find_stats_in_dir(weights_path)
+        mean_src, std_src = model.set_stats(mean, std, device)
 
     # Weights
     state = torch.load(weights_path, map_location=device)
@@ -123,6 +128,7 @@ def build_model(weights_path: str, arch: Optional[str], encoder_name: Optional[s
         "smp_version": getattr(smp, "__version__", "unknown"),
         "opencv_version": cv2.__version__,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "server_version": "1.3.0",
     }
 
     model.eval()
@@ -190,7 +196,7 @@ def apply_colormap(gray: np.ndarray, cmap: str) -> np.ndarray:
     return cv2.applyColorMap(gray, code)
 
 
-app = FastAPI(title="Segmentation Inference Server", version="1.1.0")
+app = FastAPI(title="Segmentation Inference Server", version="1.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -231,6 +237,28 @@ async def predict(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+# ===== Metrics endpoints (mask-based) =====
+
+@app.post("/metrics/from-mask")
+async def metrics_from_mask(mask: UploadFile = File(...), bin_thresh: int = Form(128)):
+    """
+    Compute personalized metrics from an already binary (or grayscale) mask image.
+    - bin_thresh: if the mask isn't strictly 0/255, we binarize with (pixel >= bin_thresh)
+    """
+    try:
+        bytes_ = await mask.read()
+        arr = np.frombuffer(bytes_, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return JSONResponse(status_code=400, content={"error": "Unable to decode mask image"})
+
+        mask_bin = (img >= int(bin_thresh)).astype(np.uint8)
+        metrics = compute_metrics_from_mask(mask_bin)
+        return metrics
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 # ========== Debug endpoints ==========
 
 @app.get("/debug/ping")
@@ -245,6 +273,7 @@ async def debug_info():
         "device": str(DEVICE),
         "default_resize": DEFAULT_RESIZE,
         "has_model": MODEL is not None,
+        "server_version": "1.3.0",
     })
     return meta
 
@@ -314,6 +343,7 @@ async def debug_stats(
                 "frac_ge_threshold": float((p >= float(threshold)).mean()),
             },
             "model_out_shape": [int(logits.shape[-2]), int(logits.shape[-1])],
+            "server_version": "1.3.0",
         }
         return stats
     except Exception as e:
@@ -321,7 +351,7 @@ async def debug_stats(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FastAPI inference server for SMP binary segmentation (with debug)")
+    parser = argparse.ArgumentParser(description="FastAPI inference server for SMP binary segmentation (v1.3.0)")
     parser.add_argument("--weights", type=str, required=True, help="Path to best_model.pth")
     parser.add_argument("--arch", type=str, default=None, help="Model architecture if not in config.json (e.g., Unet, FPN)")
     parser.add_argument("--encoder", type=str, default=None, help="Encoder name if not in config.json (e.g., resnet34)")
@@ -329,6 +359,7 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="HTTP port")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host")
     parser.add_argument("--default-resize", type=int, default=None, help="Resize input to NxN before inference (e.g., 640)")
+    parser.add_argument("--force-imagenet-stats", action="store_true", help="Ignore dataset_mean.npy/std.npy and use ImageNet stats")
     args = parser.parse_args()
 
     global MODEL, DEVICE, DEFAULT_RESIZE, DEBUG_META
@@ -340,13 +371,13 @@ def main():
 
     DEFAULT_RESIZE = args.default_resize
 
-    MODEL, DEBUG_META = build_model(args.weights, args.arch, args.encoder, DEVICE)
+    MODEL, DEBUG_META = build_model(args.weights, args.arch, args.encoder, DEVICE, args.force_imagenet_stats)
 
     print(f"[INFO] Device: {DEVICE}")
     print(f"[INFO] Loaded arch={DEBUG_META.get('arch')} encoder={DEBUG_META.get('encoder_name')}")
     print(f"[INFO] Mean source={DEBUG_META.get('used_mean_source')} Std source={DEBUG_META.get('used_std_source')}")
     print(f"[INFO] Missing keys: {DEBUG_META.get('load_missing_keys_count')} Unexpected: {DEBUG_META.get('load_unexpected_keys_count')}")
-    print("[INFO] Server ready.")
+    print(f"[INFO] Server v1.3.0 ready.")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

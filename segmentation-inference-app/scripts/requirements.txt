@@ -5,3 +5,7 @@ opencv-python-headless==4.9.0.80
 torch>=2.1.0
 torchvision>=0.16.0
 segmentation-models-pytorch==0.3.3
+scikit-image==0.24.0
+scipy==1.13.1
+networkx==3.3
+pillow==10.4.0

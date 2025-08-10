@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Upload, ImageIcon, Layers, LinkIcon, CircleAlert, Download } from "lucide-react"
+import { Upload, ImageIcon, Layers, LinkIcon, CircleAlert, Download, Calculator, FileImage, Info } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 type MaskView = "overlay" | "mask-only" | "input-only"
 
@@ -29,6 +30,12 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [maskView, setMaskView] = useState<MaskView>("overlay")
+
+  // Metrics
+  const [metrics, setMetrics] = useState<Record<string, number | string> | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricsError, setMetricsError] = useState<string | null>(null)
+  const [customMaskFile, setCustomMaskFile] = useState<File | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -88,18 +95,15 @@ export default function Page() {
         for (let i = 0; i < data.length; i += 4) {
           const v = data[i] // R channel in grayscale mask
           if (v > 0) {
-            // green color with alpha
             data[i] = 0 // R
             data[i + 1] = 255 // G
             data[i + 2] = 0 // B
             data[i + 3] = Math.round(alpha * 255) // A
           } else {
-            data[i + 3] = 0 // transparent for background
+            data[i + 3] = 0 // transparent
           }
         }
         octx.putImageData(imgData, 0, 0)
-
-        // Draw colored mask onto main canvas
         ctx.drawImage(off, 0, 0)
       }
       maskImg.src = maskUrl
@@ -118,12 +122,13 @@ export default function Page() {
     setError(null)
     setLoading(true)
     setMaskUrl(null)
+    setMetrics(null)
+    setMetricsError(null)
 
     try {
       const form = new FormData()
       form.append("image", imageFile)
       form.append("threshold", String(threshold))
-      // Allow overriding backend endpoint via proxy
       form.append("endpoint", endpoint)
 
       const res = await fetch("/api/predict", {
@@ -163,13 +168,80 @@ export default function Page() {
     return canvasRef.current.toDataURL("image/png")
   }
 
+  // Metrics: compute from current mask blob
+  const computeMetricsFromCurrentMask = async () => {
+    if (!maskUrl) return
+    setMetricsError(null)
+    setMetrics(null)
+    setMetricsLoading(true)
+    try {
+      const blob = await (await fetch(maskUrl)).blob()
+      const file = new File([blob], "mask.png", { type: "image/png" })
+
+      const form = new FormData()
+      form.append("mask", file)
+      form.append("endpoint", endpoint) // use same backend base
+      // bin_thresh left default (128) on the server
+
+      const res = await fetch("/api/metrics-from-mask", {
+        method: "POST",
+        body: form,
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        throw new Error(text || "Metrics failed")
+      }
+      const json = JSON.parse(text)
+      setMetrics(json)
+    } catch (err: any) {
+      setMetricsError(err?.message || "Failed to compute metrics")
+    } finally {
+      setMetricsLoading(false)
+    }
+  }
+
+  // Metrics: compute from uploaded mask file
+  const computeMetricsFromUploadedMask = async () => {
+    if (!customMaskFile) return
+    setMetricsError(null)
+    setMetrics(null)
+    setMetricsLoading(true)
+    try {
+      const form = new FormData()
+      form.append("mask", customMaskFile)
+      form.append("endpoint", endpoint)
+
+      const res = await fetch("/api/metrics-from-mask", {
+        method: "POST",
+        body: form,
+      })
+      const text = await res.text()
+      if (!res.ok) {
+        throw new Error(text || "Metrics failed")
+      }
+      const json = JSON.parse(text)
+      setMetrics(json)
+    } catch (err: any) {
+      setMetricsError(err?.message || "Failed to compute metrics")
+    } finally {
+      setMetricsLoading(false)
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Segmentation Mask Inference</h1>
-        <p className="text-sm text-muted-foreground">
-          Upload an image to generate a binary segmentation mask with your trained model.
-        </p>
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Segmentation Mask Inference</h1>
+          <p className="text-sm text-muted-foreground">
+            Upload an image to generate a binary segmentation mask with your trained model. Then compute metrics from
+            the mask.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-md border px-3 py-1 text-xs text-muted-foreground">
+          <Info className="h-4 w-4" />
+          <span>Project v1.3.0</span>
+        </div>
       </header>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -190,12 +262,12 @@ export default function Page() {
                 accept="image/*"
                 onChange={(e) => {
                   setMaskUrl(null)
+                  setMetrics(null)
+                  setError(null)
                   setImageFile(e.target.files?.[0] ?? null)
                 }}
               />
-              <p className="text-xs text-muted-foreground">
-                Supported: JPG, PNG, TIFF (browsers often convert TIFF to raster; prefer PNG/JPG here).
-              </p>
+              <p className="text-xs text-muted-foreground">Supported: JPG, PNG (preferred in browser).</p>
             </div>
 
             <div className="space-y-2">
@@ -210,7 +282,7 @@ export default function Page() {
                 placeholder="http://localhost:8000/predict"
               />
               <p className="text-xs text-muted-foreground">
-                Default points to the local FastAPI server you’ll run below.
+                Default points to the local FastAPI server. You can override it here.
               </p>
             </div>
 
@@ -245,6 +317,7 @@ export default function Page() {
                 onClick={() => {
                   setMaskUrl(null)
                   setError(null)
+                  setMetrics(null)
                 }}
                 disabled={loading}
               >
@@ -362,7 +435,79 @@ export default function Page() {
         </Card>
       </div>
 
-      <section className="mt-10">
+      <section className="mt-8 grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5" />
+              Metrics (from mask)
+            </CardTitle>
+            <CardDescription>
+              Compute personalized metrics directly from a binary mask (0/255). Use the predicted mask or upload one.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={computeMetricsFromCurrentMask} disabled={!maskUrl || metricsLoading}>
+                {metricsLoading ? "Computing…" : "Use current mask"}
+              </Button>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="custom-mask" className="flex items-center gap-2 text-sm">
+                  <FileImage className="h-4 w-4" />
+                  Upload mask
+                </Label>
+                <Input
+                  id="custom-mask"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={(e) => {
+                    setMetrics(null)
+                    setMetricsError(null)
+                    setCustomMaskFile(e.target.files?.[0] ?? null)
+                  }}
+                  className="max-w-xs"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={computeMetricsFromUploadedMask}
+                  disabled={!customMaskFile || metricsLoading}
+                >
+                  {metricsLoading ? "Computing…" : "Compute from file"}
+                </Button>
+              </div>
+            </div>
+
+            {metricsError && (
+              <Alert variant="destructive">
+                <CircleAlert className="h-4 w-4" />
+                <AlertTitle>Metrics failed</AlertTitle>
+                <AlertDescription>{metricsError}</AlertDescription>
+              </Alert>
+            )}
+
+            {metrics && (
+              <div className="mt-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Metric</TableHead>
+                      <TableHead className="text-right">Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(metrics).map(([k, v]) => (
+                      <TableRow key={k}>
+                        <TableCell className="whitespace-pre-wrap">{k}</TableCell>
+                        <TableCell className="text-right">{typeof v === "number" ? v.toFixed(2) : String(v)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>How to run the Python inference server</CardTitle>
@@ -370,36 +515,19 @@ export default function Page() {
           </CardHeader>
           <CardContent className="space-y-4">
             <ol className="list-decimal space-y-2 pl-5 text-sm">
-              <li>Download this project (top right “Download Code”).</li>
+              <li>Start your Python env and install dependencies (see scripts/requirements.txt).</li>
               <li>
-                Ensure your trained files are available:
-                <ul className="list-disc pl-6">
-                  <li>best_model.pth</li>
-                  <li>dataset_mean.npy and dataset_std.npy (if you saved them; otherwise defaults to ImageNet)</li>
-                  <li>Optionally config.json (saved by your trainer) with arch and encoder</li>
-                </ul>
-              </li>
-              <li>
-                In a terminal, create a Python env and install server deps:
+                Run the server:
                 <code className="block rounded bg-muted px-2 py-1 mt-2 text-xs">
                   {
-                    "cd scripts\npython -m venv .venv && source .venv/bin/activate  # On Windows: .venv\\\\Scripts\\\\activate\npip install -r requirements.txt"
+                    "python scripts/inference_server.py --weights C:\\\\path\\\\to\\\\best_model.pth --default-resize 640 --force-imagenet-stats --port 8000"
                   }
                 </code>
               </li>
-              <li>
-                Start the server (adjust paths as needed):
-                <code className="block rounded bg-muted px-2 py-1 mt-2 text-xs">
-                  {
-                    "python inference_server.py --weights /absolute/path/to/output/best_model.pth --device auto --port 8000"
-                  }
-                </code>
-              </li>
-              <li>Keep the server running. Return here, upload an image, and click Segment.</li>
+              <li>Point the endpoint field above to http://localhost:8000/predict (the UI will proxy).</li>
             </ol>
             <p className="text-xs text-muted-foreground">
-              Tip: The UI proxies to /api/predict which forwards to your FastAPI server (default
-              http://localhost:8000/predict). You can change the endpoint above.
+              The metrics are computed from the mask image, matching your metrics code expectations.
             </p>
           </CardContent>
         </Card>
