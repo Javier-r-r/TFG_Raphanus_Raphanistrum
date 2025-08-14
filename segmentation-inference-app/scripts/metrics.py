@@ -1,112 +1,113 @@
 import numpy as np
-from skimage.morphology import skeletonize
-from scipy.ndimage import convolve
+from skimage.morphology import skeletonize, remove_small_objects
+from skimage.measure import label, regionprops
+from scipy.ndimage import distance_transform_edt
+from scipy.spatial import distance
 import networkx as nx
-from scipy.spatial.distance import pdist
+from math import atan2, degrees
 
-
-def compute_metrics_from_mask(mask: np.ndarray) -> dict:
+def compute_vein_metrics(mask: np.ndarray) -> dict:
     """
-    Compute skeleton-based vein metrics from a binary mask.
-
+    Compute vein network metrics based on the Leaf Vein Network CNN Analysis Software v2.14.
+    
     Args:
-        mask: 2D array. Values can be {0,1} or {0..255}. Non-zero is treated as foreground.
-
+        mask (np.ndarray): Binary mask of the leaf veins (1 = vein, 0 = background).
+        
     Returns:
-        dict with:
-          - Numero de bifurcaciones
-          - Numero de extremos
-          - Longitud total del esqueleto
-          - Longitud media de ramas
-          - Distancia media entre bifurcaciones
-          - Desviacion estandar de distancias entre bifurcaciones
+        dict: Dictionary containing the computed metrics.
     """
-    # Ensure binary boolean
-    if mask.dtype != bool:
-        # Consider anything > 0 as foreground
-        binaria = mask > 0
-    else:
-        binaria = mask
-
-    if binaria.ndim != 2:
-        raise ValueError("mask must be a 2D array")
-
-    # Skeleton
-    esqueleto = skeletonize(binaria)
-
-    # Neighbor counts in 8-connectivity
-    kernel = np.ones((3, 3), dtype=np.uint8)
-    vecinos_total = convolve(esqueleto.astype(np.uint8), kernel, mode="constant")
-    # Subtract the center pixel to count only neighbors
-    vecinos = vecinos_total - esqueleto.astype(np.uint8)
-
-    bifurcaciones = (esqueleto & (vecinos > 2))
-    extremos = (esqueleto & (vecinos == 1))
-
-    num_bifurcaciones = int(np.count_nonzero(bifurcaciones))
-    num_extremos = int(np.count_nonzero(extremos))
-    longitud_total = int(np.count_nonzero(esqueleto))  # in pixels
-
-    # Build 8-neighborhood graph for skeleton pixels
-    coords = np.column_stack(np.nonzero(esqueleto))  # (N, 2) as (y, x)
+    # Ensure binary mask
+    binary_mask = mask > 0 if mask.dtype != bool else mask
+    
+    # --- 1. Vein Density (VD) ---
+    vein_area = np.sum(binary_mask)
+    leaf_area = binary_mask.size  # Total pixels in the image
+    vein_density = vein_area / leaf_area
+    
+    # --- 2. Vein Thickness (VT) ---
+    # Distance transform: measures the thickness at each vein pixel
+    dist_transform = distance_transform_edt(binary_mask)
+    vein_thickness = np.mean(dist_transform[binary_mask]) * 2  # Mean thickness
+    
+    # --- 3. Areole Size (AS) & Number of Areoles (NA) ---
+    # Invert the mask to find enclosed regions (areoles)
+    inverted_mask = ~binary_mask
+    labeled_areoles = label(inverted_mask, connectivity=1)  # 4-connectivity to avoid diagonal links
+    regions = regionprops(labeled_areoles)
+    
+    # Filter small noisy regions (optional, adjust min_size as needed)
+    min_areole_size = 10  # pixels
+    areole_areas = [r.area for r in regions if r.area >= min_areole_size]
+    
+    num_areoles = len(areole_areas)
+    mean_areole_size = np.mean(areole_areas) if areole_areas else 0
+    
+    # --- 4. Branching Angle (BA) ---
+    skeleton = skeletonize(binary_mask)
     G = nx.Graph()
-    # Add nodes explicitly
+    coords = np.column_stack(np.where(skeleton))
+    
+    # Build graph from skeleton
     for y, x in coords:
-        G.add_node((int(y), int(x)))
-
-    # Connect edges for 8-neighbors
-    H, W = esqueleto.shape
+        G.add_node((y, x))
+    
+    # Connect adjacent pixels (8-connectivity)
     for y, x in coords:
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                if dx == 0 and dy == 0:
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dy == 0 and dx == 0:
                     continue
-                ny, nx_ = y + dy, x + dx
-                if 0 <= ny < H and 0 <= nx_ < W and esqueleto[ny, nx_]:
-                    G.add_edge((int(y), int(x)), (int(ny), int(nx_)))
-
-    # Extract branches: simple path from endpoints to next junction/endpoint
-    ramas = []
-    visitados = set()
-    for nodo in G.nodes:
-        if nodo in visitados:
+                ny, nx_coord = y + dy, x + dx  # <- Cambia 'nx' a 'nx_coord'
+                if (ny, nx_coord) in G.nodes:  # <- Usa 'nx_coord' aquí
+                    G.add_edge((y, x), (ny, nx_coord))  # <- Y aquí
+    
+    # Detect junctions (nodes with degree >= 3)
+    junctions = [node for node in G.nodes if G.degree[node] >= 3]
+    branching_angles = []
+    
+    for node in junctions:
+        neighbors = list(G.neighbors(node))
+        if len(neighbors) < 2:
             continue
-        if G.degree[nodo] == 1:  # endpoint
-            camino = [nodo]
-            visitados.add(nodo)
-            actual = nodo
-            previo = None
-            while True:
-                vecinos_n = [n for n in G.neighbors(actual) if n != previo]
-                if not vecinos_n:
-                    break
-                previo = actual
-                actual = vecinos_n[0]
-                camino.append(actual)
-                visitados.add(actual)
-                if G.degree[actual] != 2:
-                    break
-            if len(camino) > 1:
-                ramas.append(camino)
-
-    longitudes_ramas = [len(r) for r in ramas]  # in pixels (node count)
-    media_rama = float(np.mean(longitudes_ramas)) if longitudes_ramas else 0.0
-
-    coord_bif = np.column_stack(np.nonzero(bifurcaciones))
-    if len(coord_bif) > 1:
-        dist_bif = pdist(coord_bif.astype(float))
-        media_dist_bif = float(np.mean(dist_bif))
-        std_dist_bif = float(np.std(dist_bif))
+        
+        # Compute angles between all pairs of branches
+        vectors = []
+        for neighbor in neighbors:
+            dy = neighbor[0] - node[0]
+            dx = neighbor[1] - node[1]
+            angle = degrees(atan2(dy, dx)) % 360
+            vectors.append(angle)
+        
+        # Get smallest angles between adjacent branches
+        vectors_sorted = sorted(vectors)
+        angles = []
+        for i in range(len(vectors_sorted)):
+            angle_diff = abs(vectors_sorted[i] - vectors_sorted[(i + 1) % len(vectors_sorted)])
+            angle_diff = min(angle_diff, 360 - angle_diff)
+            angles.append(angle_diff)
+        
+        if angles:
+            branching_angles.append(np.mean(angles))
+    
+    mean_branching_angle = np.mean(branching_angles) if branching_angles else 0
+    
+    # --- 5. Vein-to-Vein Distance (VVD) ---
+    # Approximate by computing the distance between skeleton pixels
+    if len(coords) >= 2:
+        random_samples = min(1000, len(coords))  # Limit to 1000 random points for speed
+        sampled_coords = coords[np.random.choice(len(coords), random_samples, replace=False)]
+        pairwise_distances = distance.pdist(sampled_coords, 'euclidean')
+        mean_vvd = np.mean(pairwise_distances)
     else:
-        media_dist_bif = 0.0
-        std_dist_bif = 0.0
-
-    resultados = {
-        "Numero de bifurcaciones": num_bifurcaciones,
-        "Numero de extremos": num_extremos,
-        "Longitud total del esqueleto": longitud_total,
-        "Longitud media de ramas": media_rama,
-        "Distancia media entre bifurcaciones": media_dist_bif,
-        "Desviacion estandar de distancias entre bifurcaciones": std_dist_bif,
+        mean_vvd = 0
+    
+    # --- Return Results ---
+    results = {
+        "Vein Density (VD)": vein_density,
+        "Vein Thickness (VT)": vein_thickness,
+        "Areole Size (AS)": mean_areole_size,
+        "Number of Areoles (NA)": num_areoles,
+        "Branching Angle (BA)": mean_branching_angle,
+        "Vein-to-Vein Distance (VVD)": mean_vvd,
     }
-    return resultados
+    return results

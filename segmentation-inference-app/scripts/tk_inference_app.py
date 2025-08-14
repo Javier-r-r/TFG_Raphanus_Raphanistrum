@@ -36,7 +36,7 @@ import torch
 import segmentation_models_pytorch as smp
 
 # Local metrics helper
-from metrics import compute_metrics_from_mask
+from metrics import compute_vein_metrics
 
 
 # ---------------------------
@@ -667,7 +667,7 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
-            res = compute_metrics_from_mask(mask_bin)
+            res = compute_vein_metrics(mask_bin)
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
@@ -690,7 +690,7 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
-            res = compute_metrics_from_mask(mask_bin)
+            res = compute_vein_metrics(mask_bin)
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
@@ -800,7 +800,7 @@ class SegTkApp:
                     
                     # Compute metrics
                     mask_bin = (mask >= 128).astype(np.uint8)
-                    metrics = compute_metrics_from_mask(mask_bin)
+                    metrics = compute_vein_metrics(mask_bin)
                     
                     # Add to CSV data
                     row_data = {
