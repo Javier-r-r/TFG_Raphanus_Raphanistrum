@@ -10,6 +10,7 @@ Features:
 - Compute personalized metrics from predicted mask or any mask file
 - Scroll to access all controls on smaller screens
 - Scrollable Debug console with Clear
+- Batch processing of images in a folder
 
 Run (Windows):
   cd scripts
@@ -21,6 +22,8 @@ Run (Windows):
 import os
 import json
 from typing import Optional, Tuple, Any, Dict
+import csv
+from pathlib import Path
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -231,7 +234,7 @@ def create_theme(style: ttk.Style):
 class SegTkApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Segmentation Inference (Tk) - v1.1")
+        root.title("Segmentation Mask Inference (Tk) - v1.1")
         root.geometry("1100x820")
         root.minsize(980, 680)
 
@@ -353,6 +356,25 @@ class SegTkApp:
         self.badge_alpha.grid(row=0, column=2, sticky="e")
         ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha,
                   orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+
+        # Batch processing section
+        row += 1
+        ttk.Label(card, text="Batch Processing", style="Section.TLabel").grid(row=row, column=0, columnspan=6, sticky="w", pady=(10, 4))
+        row += 1
+
+        batch_frame = ttk.Frame(card, style="Card.TFrame")
+        batch_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=(4, 8))
+        ttk.Button(batch_frame, text="Select Folder & Process All Images", command=self.on_batch_process, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Label(batch_frame, text="Processes all images in a folder and saves masks + metrics to 'results' subfolder", style="Muted.TLabel").pack(side=tk.LEFT)
+
+        # Progress bar (initially hidden)
+        self.progress_frame = ttk.Frame(card)
+        self.progress_frame.grid(row=row+1, column=0, columnspan=6, sticky="we", pady=4)
+        self.progress_label = ttk.Label(self.progress_frame, text="", style="Muted.TLabel")
+        self.progress_label.pack(side=tk.LEFT)
+        self.progress_bar = ttk.Progressbar(self.progress_frame, mode='determinate')
+        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
+        self.progress_frame.grid_remove()  # Hide initially
 
         for c in range(6):
             card.columnconfigure(c, weight=1)
@@ -679,6 +701,153 @@ class SegTkApp:
         for k, v in res.items():
             disp = f"{v:.2f}" if isinstance(v, float) else str(v)
             self.metrics_tree.insert("", tk.END, values=(k, disp))
+
+    def on_batch_process(self):
+        if self.model is None:
+            messagebox.showwarning("Model", "Please load model weights first.")
+            return
+        
+        folder_path = filedialog.askdirectory(title="Select folder with images to process")
+        if not folder_path:
+            return
+        
+        # Find all image files
+        folder = Path(folder_path)
+        image_extensions = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp'}
+        image_files = [f for f in folder.iterdir() if f.suffix.lower() in image_extensions and f.is_file()]
+        
+        if not image_files:
+            messagebox.showwarning("No Images", "No supported image files found in the selected folder.")
+            return
+        
+        # Create results folder
+        results_folder = folder / "results"
+        results_folder.mkdir(exist_ok=True)
+        
+        # Check for existing CSV to see what's already been processed
+        csv_path = results_folder / "metrics_summary.csv"
+        existing_processed = set()
+        if csv_path.exists():
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    existing_processed = {row['image_name'] for row in reader}
+                self._write_debug(f"Found existing metrics CSV with {len(existing_processed)} processed images")
+            except Exception as e:
+                self._write_debug(f"Could not read existing CSV: {e}")
+        
+        # Filter out already processed images
+        images_to_process = []
+        skipped_count = 0
+        for image_path in image_files:
+            mask_filename = f"{image_path.stem}_mask.png"
+            mask_path = results_folder / mask_filename
+            
+            # Skip if both mask exists AND image is in CSV
+            if mask_path.exists() and image_path.name in existing_processed:
+                skipped_count += 1
+                continue
+            images_to_process.append(image_path)
+        
+        if skipped_count > 0:
+            self._write_debug(f"Skipping {skipped_count} already processed images")
+        
+        if not images_to_process:
+            messagebox.showinfo("Batch Complete", "All images in this folder have already been processed!")
+            return
+        
+        # Show progress
+        self.progress_frame.grid()
+        self.progress_bar['maximum'] = len(images_to_process)
+        self.progress_bar['value'] = 0
+        
+        # Prepare CSV for metrics - load existing data if CSV exists
+        metrics_data = []
+        if csv_path.exists():
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    metrics_data = list(reader)
+                self._write_debug(f"Loaded {len(metrics_data)} existing metrics records")
+            except Exception as e:
+                self._write_debug(f"Could not load existing metrics: {e}")
+                metrics_data = []
+        
+        thr = float(self.threshold.get())
+        target_size = self._get_default_resize()
+        
+        self._write_debug(f"Starting batch processing of {len(images_to_process)} new images...")
+        
+        try:
+            for i, image_path in enumerate(images_to_process):
+                self.progress_label.config(text=f"Processing {image_path.name}...")
+                self.root.update()  # Update UI
+                
+                try:
+                    # Load and process image
+                    pil_img = Image.open(image_path).convert("RGB")
+                    img_rgb, img_t, original_size = preprocess_image_pil(pil_img, target_size=target_size)
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        logits = self.model(img_t.to(next(self.model.parameters()).device))
+                    mask = postprocess_mask(logits, thr, out_size=original_size)
+                    
+                    # Save mask
+                    mask_filename = f"{image_path.stem}_mask.png"
+                    mask_path = results_folder / mask_filename
+                    cv2.imwrite(str(mask_path), mask)
+                    
+                    # Compute metrics
+                    mask_bin = (mask >= 128).astype(np.uint8)
+                    metrics = compute_metrics_from_mask(mask_bin)
+                    
+                    # Add to CSV data
+                    row_data = {
+                        'image_name': image_path.name,
+                        'mask_name': mask_filename,
+                        'threshold': thr,
+                        'image_size': f"{original_size[0]}x{original_size[1]}",
+                        **metrics
+                    }
+                    metrics_data.append(row_data)
+                    
+                    self._write_debug(f"✓ Processed {image_path.name}")
+                    
+                except Exception as e:
+                    self._write_debug(f"✗ Failed to process {image_path.name}: {e}")
+                    continue
+                
+                # Update progress
+                self.progress_bar['value'] = i + 1
+                self.root.update()
+        
+            # Save metrics CSV
+            if metrics_data:
+                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                    fieldnames = metrics_data[0].keys()
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(metrics_data)
+                
+                self._write_debug(f"✓ Saved metrics summary to {csv_path}")
+            
+            # Hide progress and show completion
+            self.progress_frame.grid_remove()
+            
+            messagebox.showinfo("Batch Complete", 
+                              f"Processed {len(images_to_process)} new images successfully.\n"
+                              f"Total images in results: {len(metrics_data)}\n"
+                              f"Results saved to: {results_folder}\n"
+                              f"- Mask images: *_mask.png\n"
+                              f"- Metrics summary: metrics_summary.csv")
+            
+            self._write_debug(f"Batch processing complete. {len(images_to_process)} new images processed. Total: {len(metrics_data)} images in results.")
+            
+        except Exception as e:
+            self.progress_frame.grid_remove()
+            messagebox.showerror("Batch Error", f"Batch processing failed: {e}")
+            self._write_debug(f"Batch processing error: {e}")
 
 
 def main():
