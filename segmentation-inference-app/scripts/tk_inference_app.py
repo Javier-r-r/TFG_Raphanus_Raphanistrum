@@ -617,9 +617,9 @@ class SegTkApp:
 
             self._write_debug(f"Inference done. thr={thr:.2f} alpha={alpha:.2f}, out={original_size}")
             if not redraw_only:
-                self._show_notification("Segmentación completada", "El proceso de segmentación ha finalizado correctamente")
                 # Switch to Overlay tab after a full run
                 self.preview_nb.select(2)
+                self._show_notification("Segmentación completada", "El proceso de segmentación ha finalizado correctamente")
         except Exception as e:
             messagebox.showerror("Error", f"Inference failed:\n{e}")
 
