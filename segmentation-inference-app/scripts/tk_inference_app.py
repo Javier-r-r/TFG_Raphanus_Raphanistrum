@@ -234,7 +234,7 @@ def create_theme(style: ttk.Style):
 class SegTkApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Segmentation Mask Inference (Tk) - v1.1")
+        root.title("Segmentation Mask Inference")
         root.geometry("1100x820")
         root.minsize(980, 680)
 
@@ -259,7 +259,6 @@ class SegTkApp:
         header = ttk.Frame(self.scroll.container, style="Header.TFrame")
         header.pack(side=tk.TOP, fill=tk.X)
         ttk.Label(header, text="Segmentation Mask Inference", style="Header.TLabel").pack(side=tk.LEFT, padx=16, pady=10)
-        ttk.Label(header, text="v1.1", style="Header.TLabel").pack(side=tk.RIGHT, padx=16)
 
         # Content grid (two columns like the web app)
         content = ttk.Frame(self.scroll.container)
@@ -288,11 +287,6 @@ class SegTkApp:
         self.np_input_rgb: Optional[np.ndarray] = None
         self.last_mask: Optional[np.ndarray] = None
         self.last_overlay: Optional[np.ndarray] = None
-
-        # UI state
-
-        # Set initial labels for badges
-        self._update_badges()
 
         self._write_debug("Ready. Load model, open an image, then Segment.")
 
@@ -336,26 +330,44 @@ class SegTkApp:
         ttk.Label(card, text="Controls", style="Section.TLabel").grid(row=row, column=0, columnspan=6, sticky="w", pady=(10, 4))
         row += 1
 
-        # Threshold slider + badge
+        # Threshold control
         thr_frame = ttk.Frame(card)
         thr_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
         thr_frame.columnconfigure(1, weight=1)
+        
         ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
-        self.badge_thr = ttk.Label(thr_frame, text="0.50", style="Badge.TLabel")
-        self.badge_thr.grid(row=0, column=2, sticky="e")
+        
+        # Entry for direct numeric input
+        self.thr_entry = ttk.Entry(thr_frame, width=5, textvariable=self.threshold)
+        self.thr_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
+        
+        # Scale (slider)
         ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
-                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+                orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+        
+        # Validation for the entry
+        self.thr_entry.bind('<FocusOut>', self._validate_threshold)
+        self.thr_entry.bind('<Return>', self._validate_threshold)
 
-        # Alpha slider + badge
+        # Alpha control
         row += 1
         alpha_frame = ttk.Frame(card)
         alpha_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
         alpha_frame.columnconfigure(1, weight=1)
+        
         ttk.Label(alpha_frame, text="Overlay alpha").grid(row=0, column=0, sticky="w")
-        self.badge_alpha = ttk.Label(alpha_frame, text="0.50", style="Badge.TLabel")
-        self.badge_alpha.grid(row=0, column=2, sticky="e")
+        
+        # Entry for direct numeric input
+        self.alpha_entry = ttk.Entry(alpha_frame, width=5, textvariable=self.alpha)
+        self.alpha_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
+        
+        # Scale (slider)
         ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha,
-                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+                orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+        
+        # Validation for the entry
+        self.alpha_entry.bind('<FocusOut>', self._validate_alpha)
+        self.alpha_entry.bind('<Return>', self._validate_alpha)
 
         # Batch processing section
         row += 1
@@ -472,11 +484,59 @@ class SegTkApp:
         self.debug_text.insert(tk.END, msg + "\n")
         self.debug_text.see(tk.END)
 
+    def _validate_threshold(self, event=None):
+        try:
+            value_str = self.thr_entry.get()
+            if not value_str:  # Si está vacío, establecer a 0.5 (valor por defecto)
+                value = 0.5
+            else:
+                value = float(value_str)
+                
+            value = max(0.0, min(1.0, value))  # Asegurar que está entre 0 y 1
+            self.threshold.set(round(value, 2))
+            self._on_slider_change()
+        except ValueError:
+            # Si el valor no es numérico, restablecer al valor anterior
+            self.thr_entry.delete(0, tk.END)
+            self.thr_entry.insert(0, f"{self.threshold.get():.2f}")
+
+    def _validate_alpha(self, event=None):
+        try:
+            value_str = self.alpha_entry.get()
+            if not value_str:  # Si está vacío, establecer a 0.5 (valor por defecto)
+                value = 0.5
+            else:
+                value = float(value_str)
+                
+            value = max(0.0, min(1.0, value))  # Asegurar que está entre 0 y 1
+            self.alpha.set(round(value, 2))
+            self._on_slider_change()
+        except ValueError:
+            # Si el valor no es numérico, restablecer al valor anterior
+            self.alpha_entry.delete(0, tk.END)
+            self.alpha_entry.insert(0, f"{self.alpha.get():.2f}")
+
     def _update_badges(self):
+        # Actualizar los badges (etiquetas) si existen
         if hasattr(self, "badge_thr"):
             self.badge_thr.config(text=f"{self.threshold.get():.2f}")
         if hasattr(self, "badge_alpha"):
             self.badge_alpha.config(text=f"{self.alpha.get():.2f}")
+        
+        # Actualizar los campos de entrada si existen
+        if hasattr(self, "thr_entry") and self.thr_entry.winfo_exists():
+            current_thr = self.thr_entry.get()
+            new_thr = f"{self.threshold.get():.2f}"
+            if current_thr != new_thr:
+                self.thr_entry.delete(0, tk.END)
+                self.thr_entry.insert(0, new_thr)
+        
+        if hasattr(self, "alpha_entry") and self.alpha_entry.winfo_exists():
+            current_alpha = self.alpha_entry.get()
+            new_alpha = f"{self.alpha.get():.2f}"
+            if current_alpha != new_alpha:
+                self.alpha_entry.delete(0, tk.END)
+                self.alpha_entry.insert(0, new_alpha)
 
     def _set_metrics_preview(self, pil_img: Image.Image, title: str):
         # Keep a reasonable thumbnail size for the sidebar preview
@@ -492,11 +552,11 @@ class SegTkApp:
 
     def _on_slider_change(self, _evt=None):
         self._update_badges()
-        if self.pil_input is not None and self.model is not None:
+        if self.pil_input is not None and self.model is not None and hasattr(self, 'label_mask'):
             try:
                 self.on_segment(redraw_only=True)
-            except Exception:
-                pass
+            except Exception as e:
+                self._write_debug(f"Error updating preview: {str(e)}")
 
     def _show_notification(self, title, message):
         """Unified notification method"""
