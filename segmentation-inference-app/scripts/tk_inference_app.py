@@ -36,8 +36,31 @@ import torch
 import segmentation_models_pytorch as smp
 
 # Local metrics helper
-from metrics import compute_vein_metrics
+from metrics import compute_metrics_from_mask
 
+# ==========================================
+# 🔧 MODEL CONFIGURATION - EDIT THIS SECTION
+# ==========================================
+
+MODEL_CONFIG = {
+    # Model file names (should be in the same directory as this script)
+    "weights_file": "best_model.pth",           # Your trained model weights
+    "config_file": "config.json",              # Optional: model config
+    "mean_file": "dataset_mean.npy",           # Optional: dataset mean
+    "std_file": "dataset_std.npy",             # Optional: dataset std
+    
+    # Default model architecture (used if config.json not found)
+    "default_arch": "Unet",                    # Unet, FPN, DeepLabV3Plus, etc.
+    "default_encoder": "resnet34",             # resnet34, efficientnet-b0, etc.
+    
+    # Inference settings
+    "default_resize": 640,                     # Resize images to this size (None to disable)
+    "force_imagenet_stats": False,             # True to ignore dataset_mean/std.npy
+    "device": "auto",                          # "auto", "cpu", or "cuda"
+    "auto_load": True,                         # Auto-load model on startup
+}
+
+# ==========================================
 
 # ---------------------------
 # Model helpers (same logic as server)
@@ -124,6 +147,79 @@ def color_overlay(rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, color=(
         overlay[m] = color
         out[m] = (out[m].astype(np.float32) * (1 - alpha) + overlay[m].astype(np.float32) * alpha).astype(np.uint8)
     return out
+
+
+def load_integrated_model(script_dir: str, config: Dict[str, Any]) -> Tuple[torch.nn.Module, Dict[str, Any]]:
+    """
+    Load the integrated model from files in the script directory.
+    """
+    # Determine device
+    if config["device"] == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(config["device"])
+    
+    # Check for weights file
+    weights_path = os.path.join(script_dir, config["weights_file"])
+    if not os.path.exists(weights_path):
+        raise FileNotFoundError(f"Model weights not found: {weights_path}")
+    
+    # Load config if available
+    model_config = {}
+    config_path = os.path.join(script_dir, config["config_file"])
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                model_config = json.load(f)
+        except Exception as e:
+            print(f"Warning: Could not load config.json: {e}")
+    
+    # Determine architecture
+    arch = model_config.get("arch") or model_config.get("arquitectura") or config["default_arch"]
+    encoder_name = model_config.get("encoder_name") or config["default_encoder"]
+    
+    # Create model
+    model = CamVidModel(arch=arch, encoder_name=encoder_name, in_channels=3, out_classes=1)
+    model.to(device)
+    
+    # Load normalization stats
+    mean_src, std_src = "imagenet", "imagenet"
+    if not config["force_imagenet_stats"]:
+        mean_path = os.path.join(script_dir, config["mean_file"])
+        std_path = os.path.join(script_dir, config["std_file"])
+        
+        mean = np.load(mean_path) if os.path.exists(mean_path) else None
+        std = np.load(std_path) if os.path.exists(std_path) else None
+        
+        if mean is not None or std is not None:
+            mean_src, std_src = model.set_stats(mean, std, device)
+    
+    # Load weights
+    state = torch.load(weights_path, map_location=device)
+    load_res = model.load_state_dict(state, strict=False)
+    model.eval()
+    
+    # Create debug metadata
+    debug_meta = {
+        "arch": arch,
+        "encoder_name": encoder_name,
+        "weights_path": os.path.abspath(weights_path),
+        "device": str(device),
+        "used_mean_source": mean_src,
+        "used_std_source": std_src,
+        "load_missing_keys_count": len(load_res.missing_keys),
+        "load_unexpected_keys_count": len(load_res.unexpected_keys),
+        "load_missing_keys_sample": load_res.missing_keys[:5],
+        "load_unexpected_keys_sample": load_res.unexpected_keys[:5],
+        "num_parameters": sum(p.numel() for p in model.parameters()),
+        "torch_version": torch.__version__,
+        "smp_version": getattr(smp, "__version__", "unknown"),
+        "opencv_version": cv2.__version__,
+        "integrated_model": True,
+        "auto_loaded": True,
+    }
+    
+    return model, debug_meta
 
 
 # ---------------------------
@@ -234,7 +330,7 @@ def create_theme(style: ttk.Style):
 class SegTkApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Segmentation Mask Inference (Tk) - v1.1")
+        root.title("Segmentation Mask Inference (Tk) - v2.0")
         root.geometry("1100x820")
         root.minsize(980, 680)
 
@@ -259,7 +355,7 @@ class SegTkApp:
         header = ttk.Frame(self.scroll.container, style="Header.TFrame")
         header.pack(side=tk.TOP, fill=tk.X)
         ttk.Label(header, text="Segmentation Mask Inference", style="Header.TLabel").pack(side=tk.LEFT, padx=16, pady=10)
-        ttk.Label(header, text="v1.1", style="Header.TLabel").pack(side=tk.RIGHT, padx=16)
+        ttk.Label(header, text="v2.0", style="Header.TLabel").pack(side=tk.RIGHT, padx=16)
 
         # Content grid (two columns like the web app)
         content = ttk.Frame(self.scroll.container)
@@ -282,6 +378,7 @@ class SegTkApp:
 
         self.model: Optional[torch.nn.Module] = None
         self.debug_meta: Dict[str, Any] = {}
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
 
         # Inference state
         self.pil_input: Optional[Image.Image] = None
@@ -295,6 +392,10 @@ class SegTkApp:
         self._update_badges()
 
         self._write_debug("Ready. Load model, open an image, then Segment.")
+        
+        # Auto-load model if enabled
+        if MODEL_CONFIG.get("auto_load", False):
+            self.root.after(100, self._auto_load_model)
 
     # -------- UI building blocks --------
 
@@ -575,12 +676,13 @@ class SegTkApp:
     def _get_default_resize(self) -> Optional[int]:
         s = self.default_resize_var.get().strip()
         if not s:
-            return None
+            # Use config default if field is empty
+            return MODEL_CONFIG.get("default_resize")
         try:
             v = int(s)
             return v if v > 0 else None
         except Exception:
-            return None
+            return MODEL_CONFIG.get("default_resize")
 
     def on_segment(self, redraw_only: bool = False):
         if self.model is None:
@@ -667,7 +769,7 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
-            res = compute_vein_metrics(mask_bin)
+            res = compute_metrics_from_mask(mask_bin)
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
@@ -690,7 +792,7 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
-            res = compute_vein_metrics(mask_bin)
+            res = compute_metrics_from_mask(mask_bin)
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
@@ -800,7 +902,7 @@ class SegTkApp:
                     
                     # Compute metrics
                     mask_bin = (mask >= 128).astype(np.uint8)
-                    metrics = compute_vein_metrics(mask_bin)
+                    metrics = compute_metrics_from_mask(mask_bin)
                     
                     # Add to CSV data
                     row_data = {
@@ -848,6 +950,61 @@ class SegTkApp:
             self.progress_frame.grid_remove()
             messagebox.showerror("Batch Error", f"Batch processing failed: {e}")
             self._write_debug(f"Batch processing error: {e}")
+
+    def _auto_load_model(self):
+        """Auto-load the integrated model on startup"""
+        try:
+            self._write_debug("🚀 Auto-loading integrated model...")
+            self._write_debug(f"📂 Script directory: {self.script_dir}")
+            
+            # Check if required files exist
+            weights_path = os.path.join(self.script_dir, MODEL_CONFIG["weights_file"])
+            if not os.path.exists(weights_path):
+                self._write_debug(f"❌ Model weights not found: {MODEL_CONFIG['weights_file']}")
+                self._write_debug("📋 To use auto-load, place these files in the scripts/ directory:")
+                self._write_debug(f"   - {MODEL_CONFIG['weights_file']} (required)")
+                self._write_debug(f"   - {MODEL_CONFIG['config_file']} (optional)")
+                self._write_debug(f"   - {MODEL_CONFIG['mean_file']} (optional)")
+                self._write_debug(f"   - {MODEL_CONFIG['std_file']} (optional)")
+                self._write_debug("💡 Or disable auto_load in MODEL_CONFIG and use 'Load Model' button")
+                return
+            
+            self._write_debug(f"✅ Found weights: {MODEL_CONFIG['weights_file']}")
+            
+            # Load the model
+            self.model, self.debug_meta = load_integrated_model(self.script_dir, MODEL_CONFIG)
+            
+            # Update the UI fields with loaded values
+            self.arch_var.set(self.debug_meta.get("arch", "Unet"))
+            self.encoder_var.set(self.debug_meta.get("encoder_name", "resnet34"))
+            self.weights_path_var.set(self.debug_meta.get("weights_path", ""))
+            
+            # Set default resize from config
+            if MODEL_CONFIG.get("default_resize"):
+                self.default_resize_var.set(str(MODEL_CONFIG["default_resize"]))
+            
+            # Log success
+            arch = self.debug_meta.get("arch", "Unknown")
+            encoder = self.debug_meta.get("encoder_name", "Unknown")
+            device = self.debug_meta.get("device", "Unknown")
+            
+            self._write_debug("🎉 Integrated model loaded successfully!")
+            self._write_debug(f"Architecture: {arch}")
+            self._write_debug(f"Encoder: {encoder}")
+            self._write_debug(f"Device: {device}")
+            self._write_debug(f"Normalization: {self.debug_meta.get('used_mean_source')} mean, {self.debug_meta.get('used_std_source')} std")
+            self._write_debug(f"Parameters: {self.debug_meta.get('num_parameters', 0):,}")
+            
+            if self.debug_meta.get('load_missing_keys_count', 0) > 0:
+                self._write_debug(f"⚠️  Missing keys: {self.debug_meta.get('load_missing_keys_count')}")
+            if self.debug_meta.get('load_unexpected_keys_count', 0) > 0:
+                self._write_debug(f"⚠️  Unexpected keys: {self.debug_meta.get('load_unexpected_keys_count')}")
+            
+            self._write_debug("🖼️  Model ready! Open an image and click 'Segment' to start.")
+            
+        except Exception as e:
+            self._write_debug(f"❌ Failed to auto-load model: {e}")
+            self._write_debug("💡 You can still use 'Load Model' button to load manually")
 
 
 def main():
