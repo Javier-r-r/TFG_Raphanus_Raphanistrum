@@ -6,6 +6,7 @@ import json
 import csv
 from typing import Optional, Dict, Any
 from pathlib import Path
+from datetime import datetime
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -20,6 +21,7 @@ from models import preprocess_image_pil, postprocess_mask, color_overlay
 from ui_components import ScrollableFrame
 from theme import create_theme
 from metrics import compute_vein_metrics
+from metrics import generate_petal_mask_from_rgb
 
 
 class SegTkApp:
@@ -65,7 +67,8 @@ class SegTkApp:
         # Right column: Preview (Card with tabs)
         self._build_preview_card(content)
 
-        # Bottom row: Metrics and Debug (two cards)
+        # Bottom row: Batch, Metrics, and Debug (three cards)
+        self._build_batch_card(self.scroll.container)
         self._build_metrics_card(self.scroll.container)
         self._build_debug_card(self.scroll.container)
 
@@ -80,8 +83,24 @@ class SegTkApp:
         self.np_input_rgb: Optional[np.ndarray] = None
         self.last_mask: Optional[np.ndarray] = None
         self.last_overlay: Optional[np.ndarray] = None
+        self.current_metrics: Optional[Dict[str, Any]] = None
 
-        self._write_debug("Ready. Load model, open an image, then Segment.")
+        # Instructions for the debug console
+        self._clear_debug()
+        self._write_debug(
+            "Welcome to the Segmentation Mask Inference App!\n"
+            "\n"
+            "Instructions:\n"
+            "1. Load model weights (.pth) using the 'Browse' and 'Load Model' buttons.\n"
+            "2. Open an image for segmentation.\n"
+            "3. Adjust threshold and overlay alpha as needed.\n"
+            "4. Click 'Segment' to generate the mask and overlay.\n"
+            "5. Save the mask or overlay if desired.\n"
+            "6. Use 'Batch Processing' to process all images in a folder.\n"
+            "7. Use the 'Metrics' section to compute and save mask metrics.\n"
+            "\n"
+            "All actions, errors, and progress will be shown here."
+        )
 
     # -------- UI building blocks --------
 
@@ -135,68 +154,18 @@ class SegTkApp:
         ttk.Button(actions, text="Save Mask", command=self.on_save_mask, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(actions, text="Save Overlay", command=self.on_save_overlay, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
 
-        # Sliders section
-        row += 1
-        ttk.Label(card, text="Controls", style="Section.TLabel").grid(row=row, column=0, columnspan=6, sticky="w", pady=(10, 4))
-        row += 1
-
-        # Threshold control
-        thr_frame = ttk.Frame(card)
-        thr_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
-        thr_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
-        
-        # Entry for direct numeric input
-        self.thr_entry = ttk.Entry(thr_frame, width=5, textvariable=self.threshold)
-        self.thr_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
-        
-        # Scale (slider)
-        ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
-                orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
-        
-        # Validation for the entry
-        self.thr_entry.bind('<FocusOut>', self._validate_threshold)
-        self.thr_entry.bind('<Return>', self._validate_threshold)
-
-        # Alpha control
-        row += 1
-        alpha_frame = ttk.Frame(card)
-        alpha_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=4)
-        alpha_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(alpha_frame, text="Overlay alpha").grid(row=0, column=0, sticky="w")
-        
-        # Entry for direct numeric input
-        self.alpha_entry = ttk.Entry(alpha_frame, width=5, textvariable=self.alpha)
-        self.alpha_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
-        
-        # Scale (slider)
-        ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha,
-                orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
-        
-        # Validation for the entry
-        self.alpha_entry.bind('<FocusOut>', self._validate_alpha)
-        self.alpha_entry.bind('<Return>', self._validate_alpha)
-
-        # Batch processing section
-        row += 1
-        ttk.Label(card, text="Batch Processing", style="Section.TLabel").grid(row=row, column=0, columnspan=6, sticky="w", pady=(10, 4))
-        row += 1
-
-        batch_frame = ttk.Frame(card, style="Card.TFrame")
-        batch_frame.grid(row=row, column=0, columnspan=6, sticky="we", pady=(4, 8))
-        ttk.Button(batch_frame, text="Select Folder & Process All Images", command=self.on_batch_process, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Label(batch_frame, text="Processes all images in a folder and saves masks + metrics to 'results' subfolder", style="Muted.TLabel").pack(side=tk.LEFT)
-
-        # Progress bar (initially hidden)
-        self.progress_frame = ttk.Frame(card)
-        self.progress_frame.grid(row=row+1, column=0, columnspan=6, sticky="we", pady=4)
-        self.progress_label = ttk.Label(self.progress_frame, text="", style="Muted.TLabel")
-        self.progress_label.pack(side=tk.LEFT)
-        self.progress_bar = ttk.Progressbar(self.progress_frame, mode='determinate')
-        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
-        self.progress_frame.grid_remove()  # Hide initially
+        # Remove threshold control from here
+        # (delete the following block)
+        # thr_frame = ttk.Frame(card)
+        # thr_frame.grid(row=7, column=0, columnspan=6, sticky="we", pady=4)
+        # thr_frame.columnconfigure(1, weight=1)
+        # ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
+        # self.thr_entry = ttk.Entry(thr_frame, width=5, textvariable=self.threshold)
+        # self.thr_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
+        # ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
+        #         orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+        # self.thr_entry.bind('<FocusOut>', self._validate_threshold)
+        # self.thr_entry.bind('<Return>', self._validate_threshold)
 
         for c in range(6):
             card.columnconfigure(c, weight=1)
@@ -229,6 +198,30 @@ class SegTkApp:
         self.preview_nb.add(tab_overlay, text="Overlay")
         self.label_overlay = ttk.Label(tab_overlay, background="#222")
         self.label_overlay.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        
+        # Insert threshold slider/entry here, below preview
+        thr_frame = ttk.Frame(card)
+        thr_frame.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+        thr_frame.columnconfigure(1, weight=1)
+        ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
+        self.thr_entry = ttk.Entry(thr_frame, width=5, textvariable=self.threshold)
+        self.thr_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
+        ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
+                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+        self.thr_entry.bind('<FocusOut>', self._validate_threshold)
+        self.thr_entry.bind('<Return>', self._validate_threshold)
+
+        # Alpha control (now below threshold)
+        alpha_frame = ttk.Frame(card)
+        alpha_frame.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+        alpha_frame.columnconfigure(1, weight=1)
+        ttk.Label(alpha_frame, text="Overlay alpha").grid(row=0, column=0, sticky="w")
+        self.alpha_entry = ttk.Entry(alpha_frame, width=5, textvariable=self.alpha)
+        self.alpha_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
+        ttk.Scale(alpha_frame, from_=0.0, to=1.0, variable=self.alpha,
+                  orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
+        self.alpha_entry.bind('<FocusOut>', self._validate_alpha)
+        self.alpha_entry.bind('<Return>', self._validate_alpha)
 
     def _build_metrics_card(self, parent: ttk.Widget):
         """Build the metrics computation card."""
@@ -243,6 +236,7 @@ class SegTkApp:
         btns.pack(side=tk.TOP, fill=tk.X, pady=(0, 8))
         ttk.Button(btns, text="Metrics from predicted mask", command=self.on_metrics_from_pred, style="Accent.TButton").pack(side=tk.LEFT)
         ttk.Button(btns, text="Metrics from mask file...", command=self.on_metrics_from_file, style="Secondary.TButton").pack(side=tk.LEFT, padx=8)
+        ttk.Button(btns, text="Save Metrics to CSV", command=self.on_save_metrics, style="Secondary.TButton").pack(side=tk.LEFT, padx=8)
 
         # Body: left preview, right table
         body = ttk.Frame(card)
@@ -269,6 +263,27 @@ class SegTkApp:
         self.metrics_tree.column("metric", width=420, anchor="w")
         self.metrics_tree.column("value", width=140, anchor="e")
         self.metrics_tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    def _build_batch_card(self, parent: ttk.Widget):
+        """Build the batch processing card."""
+        card = ttk.Frame(parent, style="Card.TFrame", padding=12)
+        card.pack(side=tk.TOP, fill=tk.X, padx=14, pady=(0, 12))
+        ttk.Label(card, text="Batch Processing", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(card, text="Processes all images in a folder and saves masks + metrics to 'results' subfolder",
+                  style="CardDesc.TLabel").pack(anchor="w", pady=(2, 8))
+
+        batch_frame = ttk.Frame(card, style="Card.TFrame")
+        batch_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 8))
+        ttk.Button(batch_frame, text="Select Folder & Process All Images", command=self.on_batch_process, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 6))
+
+        # Progress bar (initially hidden)
+        self.progress_frame = ttk.Frame(card)
+        self.progress_frame.pack(side=tk.TOP, fill=tk.X, pady=4)
+        self.progress_label = ttk.Label(self.progress_frame, text="", style="Muted.TLabel")
+        self.progress_label.pack(side=tk.LEFT)
+        self.progress_bar = ttk.Progressbar(self.progress_frame, mode='determinate')
+        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
+        self.progress_frame.pack_forget()  # Hide initially
 
     def _build_debug_card(self, parent: ttk.Widget):
         """Build the debug console card."""
@@ -579,7 +594,11 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
-            res = compute_vein_metrics(mask_bin)
+            # Generate petal mask from input image if available, and add vein mask
+            petal_mask = None
+            img_rgb = self.np_input_rgb if self.np_input_rgb is not None else None
+            res = compute_vein_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb)
+            self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
@@ -601,12 +620,67 @@ class SegTkApp:
             pil = Image.fromarray(img)
             self._set_metrics_preview(pil, f"File: {os.path.basename(path)}")
 
+            # Ask user if they want to provide a petal mask
+            use_petal_mask = messagebox.askyesno("Petal Mask", "Do you want to provide a petal mask file for vein density calculation?")
+            petal_mask = None
+            if use_petal_mask:
+                petal_path = filedialog.askopenfilename(
+                    title="Open Petal Mask Image",
+                    filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.tif;*.tiff"), ("All files", "*.*")]
+                )
+                if petal_path:
+                    petal_img = cv2.imread(petal_path, cv2.IMREAD_GRAYSCALE)
+                    if petal_img is not None:
+                        petal_mask = (petal_img >= 128).astype(np.uint8)
+
             # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
-            res = compute_vein_metrics(mask_bin)
+            res = compute_vein_metrics(mask_bin, petal_mask=petal_mask)
+            self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
             messagebox.showerror("Metrics", f"Failed to compute metrics:\n{e}")
+
+    def on_save_metrics(self):
+        """Save metrics to CSV file."""
+        if not self.current_metrics:
+            messagebox.showwarning("Save Metrics", "No metrics to save. Compute metrics first.")
+            return
+        
+        path = filedialog.asksaveasfilename(
+            title="Save Metrics to CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")]
+        )
+        if not path:
+            return
+        
+        try:
+            # Add timestamp and image info to metrics
+            metrics_with_info = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "image_name": self.metrics_preview_title.cget("text"),
+                **self.current_metrics
+            }
+            
+            # Check if file exists to determine if we need to write headers
+            file_exists = os.path.exists(path)
+            
+            with open(path, 'a', newline='', encoding='utf-8') as csvfile:
+                fieldnames = list(metrics_with_info.keys())
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                
+                if not file_exists:
+                    writer.writeheader()
+                
+                writer.writerow(metrics_with_info)
+            
+            self._show_notification("Save Metrics", f"Metrics saved to: {path}")
+            self._write_debug(f"Metrics saved to CSV: {path}")
+            
+        except Exception as e:
+            messagebox.showerror("Save Metrics", f"Failed to save metrics:\n{e}")
+            self._write_debug(f"Error saving metrics: {e}")
 
     def _show_metrics(self, res: Dict[str, Any]):
         """Display metrics in the tree view."""
@@ -672,7 +746,7 @@ class SegTkApp:
             return
         
         # Show progress
-        self.progress_frame.grid()
+        self.progress_frame.pack()
         self.progress_bar['maximum'] = len(images_to_process)
         self.progress_bar['value'] = 0
         
@@ -748,7 +822,7 @@ class SegTkApp:
                 self._write_debug(f"✓ Saved metrics summary to {csv_path}")
             
             # Hide progress and show completion
-            self.progress_frame.grid_remove()
+            self.progress_frame.pack_forget()
 
             self._show_notification("Batch Complete", 
                               f"Processed {len(images_to_process)} new images successfully.\n"
@@ -760,7 +834,7 @@ class SegTkApp:
             self._write_debug(f"Batch processing complete. {len(images_to_process)} new images processed. Total: {len(metrics_data)} images in results.")
             
         except Exception as e:
-            self.progress_frame.grid_remove()
+            self.progress_frame.pack_forget()
             messagebox.showerror("Batch Error", f"Batch processing failed: {e}")
             self._write_debug(f"Batch processing error: {e}")
 

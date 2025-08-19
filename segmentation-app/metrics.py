@@ -5,29 +5,45 @@ from scipy.ndimage import distance_transform_edt
 from scipy.spatial import distance
 import networkx as nx
 from math import atan2, degrees
+import cv2
+from petals_generator import generate_petal_mask_from_rgb
 
-def compute_vein_metrics(mask: np.ndarray) -> dict:
+def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rgb: np.ndarray = None) -> dict:
     """
-    Compute vein network metrics based on the Leaf Vein Network CNN Analysis Software v2.14.
+    Compute vein network metrics. If petal_mask is provided, vein density is calculated
+    as (vein area) / (petal area). Otherwise, uses total image area.
+    If img_rgb is provided and petal_mask is None, the petal mask will be generated from img_rgb and combined with the vein mask.
     
     Args:
         mask (np.ndarray): Binary mask of the leaf veins (1 = vein, 0 = background).
+        petal_mask (np.ndarray, optional): Binary mask of the petal (1 = petal, 0 = background).
+        img_rgb (np.ndarray, optional): RGB image to generate petal mask if not provided.
         
     Returns:
         dict: Dictionary containing the computed metrics.
     """
     # Ensure binary mask
     binary_mask = mask > 0 if mask.dtype != bool else mask
-    
+
+    # --- Petal mask logic ---
+    if petal_mask is None and img_rgb is not None:
+        petal_mask = generate_petal_mask_from_rgb(img_rgb)
+        # Add the vein mask to the petal mask
+        petal_mask = np.clip(petal_mask + (binary_mask.astype(np.uint8)), 0, 1)
+
     # --- 1. Vein Density (VD) ---
     vein_area = np.sum(binary_mask)
-    leaf_area = binary_mask.size  # Total pixels in the image
-    vein_density = vein_area / leaf_area
+    if petal_mask is not None:
+        petal_area = np.sum(petal_mask > 0)
+        leaf_area = petal_area if petal_area > 0 else binary_mask.size
+    else:
+        leaf_area = binary_mask.size  # Total pixels in the image
+    vein_density = vein_area / leaf_area if leaf_area > 0 else 0
     
     # --- 2. Vein Thickness (VT) ---
     # Distance transform: measures the thickness at each vein pixel
     dist_transform = distance_transform_edt(binary_mask)
-    vein_thickness = np.mean(dist_transform[binary_mask]) * 2  # Mean thickness
+    vein_thickness = np.mean(dist_transform[binary_mask]) * 2 if np.any(binary_mask) else 0
     
     # --- 3. Areole Size (AS) & Number of Areoles (NA) ---
     # Invert the mask to find enclosed regions (areoles)
