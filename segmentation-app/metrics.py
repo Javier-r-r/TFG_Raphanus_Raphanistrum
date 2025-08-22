@@ -8,6 +8,22 @@ from math import atan2, degrees
 import cv2
 from petals_generator import generate_petal_mask_from_rgb
 
+def compute_normalized_metrics(mask, petal_mask=None, img_rgb=None, reference_resolution=1000):
+    # Calcular métricas originales
+    results = compute_vein_metrics(mask, petal_mask, img_rgb)
+    
+    # Calcular factor de escala relativo a una resolución de referencia
+    height, width = mask.shape
+    image_diagonal = np.sqrt(height**2 + width**2)
+    scale_factor = reference_resolution / image_diagonal
+    
+    # Normalizar métricas dependientes del tamaño
+    results["Vein Thickness (VT)"] *= scale_factor
+    results["Areole Size (AS)"] *= (scale_factor ** 2)
+    results["Vein-to-Vein Distance (VVD)"] *= scale_factor
+    
+    return results
+
 def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rgb: np.ndarray = None) -> dict:
     """
     Compute vein network metrics. If petal_mask is provided, vein density is calculated

@@ -1,0 +1,967 @@
+ 
+====================================================================================================
+LEYENDA DETALLADA - EXPLICACIÓN DE LAS MÉTRICAS
+====================================================================================================
+VD  - Vein Density (Densidad de venas):
+     Proporción del área ocupada por venas respecto al área total de la imagen/pétalo
+     Rango: 0-1 (0 = sin venas, 1 = completamente venoso)
+     Unidad: Adimensional
+
+VT  - Vein Thickness (Grosor de venas):
+     Grosor promedio de las venas en la imagen
+     Unidad: Píxeles (depende de la resolución de la imagen)
+
+AS  - Areole Size (Tamaño de aréolas):
+     Tamaño promedio de las áreas cerradas entre las venas
+     Unidad: Píxeles² (depende de la resolución)
+
+NA  - Number of Areoles (Número de aréolas):
+     Cantidad total de áreas cerradas detectadas entre las venas
+     Unidad: Conteo
+
+BA  - Branching Angle (Ángulo de ramificación):
+     Ángulo promedio en los puntos donde las venas se ramifican
+     Unidad: Grados (°)
+
+VVD - Vein-to-Vein Distance (Distancia entre venas):
+     Distancia promedio entre venas adyacentes
+     Unidad: Píxeles (depende de la resolución)
+====================================================================================================
+TABLA COMPARATIVA DE MÉTRICAS POR IMAGEN
+========================================================================================================================
+
+
+GRUPO 0:
+------------------------------------------------------------------------------------------------------------------------
+Imagen               VD           VT           AS              NA       BA           VVD          Tamaño    
+------------------------------------------------------------------------------------------------------------------------
+rf12-0p.tif          0.019902     2.9805       10050.83        43       114.11       162.45       1051x630  
+rf15-0p.tif          0.009957     2.9536       14942.82        33       113.88       141.95       1111x1213 
+rf18-0p.tif          0.022081     3.0120       12023.58        38       112.47       253.53       1023x705  
+rf23-0p.tif          0.011696     2.8164       21754.90        22       113.76       156.89       1114x864  
+rf28-0p.tif          0.015902     3.0341       22398.20        21       113.41       222.03       1046x773  
+rf44-0p.tif          0.009264     2.9466       117310.39       4        114.98       159.24       1051x754  
+rf53-0p.tif          0.019070     2.8915       14503.17        28       114.08       188.37       1229x652  
+rf56-0p.tif          0.019423     2.8248       17447.91        27       113.54       185.14       921x693   
+rf57-0p.tif          0.016962     2.7727       11309.54        38       114.26       149.17       1274x750  
+rf59-0p.tif          0.014965     4.4764       32164.50        14       108.17       179.31       525x342   
+rf72-0p.tif          0.022912     4.7539       17031.50        26       108.62       196.94       451x288   
+rf75-0p.tif          0.016041     2.9777       17685.73        25       114.14       160.24       1002x626  
+rf76-0p.tif          0.019848     2.8933       13130.42        27       114.31       182.60       1138x487  
+rs21-0p.tif          0.017227     2.8409       23826.52        18       112.87       154.78       982x576   
+rs25-0p.tif          0.000000     0.0000       440421.27       1        0.00         0.00         1012x605  
+rs29-0p.tif          0.023194     4.6950       13440.99        35       109.23       202.59       451x343   
+rs53-0p.tif          0.013427     2.6041       32527.99        13       114.11       130.60       1131x640  
+rs62-0p.tif          0.011717     2.5575       29259.82        14       112.38       173.35       1121x596  
+rs71-0p.tif          0.017406     3.0338       13922.52        28       112.82       170.82       1194x589  
+rs73-0p.tif          0.016383     4.6621       31645.14        15       107.98       196.46       446x342   
+rs74-0p.tif          0.017066     2.7770       16152.09        26       112.87       171.38       1042x586  
+rs83-0p.tif          0.013373     4.7240       53609.77        9        107.97       170.01       485x393   
+rs85-0p.tif          0.015291     2.6662       35766.09        13       115.02       154.91       992x705   
+rs89-0p.tif          0.002537     2.6637       480392.75       1        109.20       125.79       943x716   
+
+
+GRUPO 1:
+------------------------------------------------------------------------------------------------------------------------
+Imagen               VD           VT           AS              NA       BA           VVD          Tamaño    
+------------------------------------------------------------------------------------------------------------------------
+rf14-1p.tif          0.012193     3.1497       14099.49        35       113.87       132.16       961x923   
+rf16-1p.tif          0.010689     2.9101       17648.02        28       112.63       167.18       982x939   
+rf21-1p.tif          0.012706     3.0851       14517.52        34       112.80       153.63       903x914   
+rf22-1p.tif          0.010748     3.2110       13801.42        34       112.01       134.55       1046x754  
+rf25-1p.tif          0.012939     3.1430       16192.65        29       112.73       205.90       966x703   
+rf510-1p.tif         0.015333     3.1355       12613.14        37       111.64       189.97       1018x732  
+rf52-1p.tif          0.011308     3.2540       25771.22        19       112.19       138.56       1109x966  
+rf58-1p.tif          0.014327     3.1343       9412.61         51       113.54       188.70       1080x858  
+rf77-1p.tif          0.010272     3.3254       40406.34        11       113.93       192.00       1130x705  
+rf79-1p.tif          0.009012     2.7538       18872.75        26       113.47       152.01       1051x914  
+rs22-1p.tif          0.012048     3.0242       16778.20        29       111.97       155.25       971x816   
+rs24-1p.tif          0.009288     2.6849       94534.13        5        114.40       170.55       1002x736  
+rs28-1p.tif          0.011728     2.9494       17184.80        26       113.90       186.42       1051x666  
+rs42-1p.tif          0.009938     2.8203       19351.29        24       114.37       219.09       1165x812  
+rs51-1p.tif          0.012009     2.8471       16757.35        26       113.93       208.51       1111x666  
+rs61-1p.tif          0.013039     3.0575       16369.59        30       113.57       138.58       938x1035  
+rs710-1p.tif         0.013203     2.9098       15217.97        32       113.57       134.18       982x835   
+rs72-1p.tif          0.014167     3.0401       18378.37        26       113.51       184.66       1029x801  
+rs78-1p.tif          0.010581     3.0111       21240.18        23       113.91       162.54       1130x964  
+rs81-1p.tif          0.013215     2.9839       18775.53        24       113.38       195.54       1057x686  
+rs82-1p.tif          0.000000     0.0000       499815.89       1        0.00         0.00         971x945   
+rs88-1p.tif          0.007275     2.8459       70821.92        7        113.22       181.64       982x935   
+
+
+GRUPO 2:
+------------------------------------------------------------------------------------------------------------------------
+Imagen               VD           VT           AS              NA       BA           VVD          Tamaño    
+------------------------------------------------------------------------------------------------------------------------
+rf11-2p.tif          0.015484     4.8676       22148.32        21       107.17       171.52       446x318   
+rf13-2p.tif          0.015353     3.1833       18518.69        25       113.61       160.77       892x626   
+rf26-2p.tif          0.013420     3.8824       14047.71        35       111.89       168.21       886x818   
+rf51-2p.tif          0.013612     4.6018       22591.33        21       106.88       151.73       506x383   
+rf54-2p.tif          0.012672     3.0930       16419.57        30       114.56       150.34       913x855   
+rf71-2p.tif          0.011410     3.3093       17027.67        29       111.88       210.42       913x874   
+rf73-2p.tif          0.009937     3.0088       19885.54        24       111.87       136.01       953x726   
+rf74-2p.tif          0.013743     2.9634       17498.55        27       112.74       199.03       882x657   
+rf78-2p.tif          0.013267     3.4285       16176.32        29       113.34       160.09       862x626   
+rs23-2p.tif          0.007060     2.7422       32840.18        15       112.39       174.22       1071x945  
+rs26-2p.tif          0.006330     2.9221       92920.36        5        111.52       240.62       863x596   
+rs27-2p.tif          0.009036     2.8328       27477.45        18       113.64       185.48       982x925   
+rs41-2p.tif          0.013264     2.7586       14092.89        35       113.70       132.24       933x915   
+rs52-2p.tif          0.015792     2.8656       27027.66        18       113.22       210.82       903x776   
+rs63-2p.tif          0.013290     3.2935       12611.18        38       111.83       161.93       1028x807  
+rs76-2p.tif          0.014807     3.2500       20890.49        23       113.10       152.34       882x705   
+rs77-2p.tif          0.012715     3.3530       20843.35        23       111.20       167.79       862x676   
+rs79-2p.tif          0.012572     3.1843       24584.06        20       111.97       185.53       913x834   
+rs84-2p.tif          0.011890     2.7969       25533.12        18       112.55       198.89       933x635   
+rs86-2p.tif          0.011997     3.2150       20152.56        24       112.86       176.66       971x790   
+rs87-2p.tif          0.012863     6.0744       49005.99        10       108.00       176.71       436x388   
+
+
+REPORTES INDIVIDUALES POR IMAGEN
+================================================================================
+
+IMAGEN: rf11-2p.tif (Grupo 2)
+Tamaño: 446x318
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015484
+Vein Thickness (VT)           : 4.8676
+Areole Size (AS)              : 22148.3167
+Number of Areoles (NA)        : 21.0000
+Branching Angle (BA)          : 107.1661
+Vein-to-Vein Distance (VVD)   : 171.5218
+------------------------------------------------------------
+
+IMAGEN: rf12-0p.tif (Grupo 0)
+Tamaño: 1051x630
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.019902
+Vein Thickness (VT)           : 2.9805
+Areole Size (AS)              : 10050.8262
+Number of Areoles (NA)        : 43.0000
+Branching Angle (BA)          : 114.1119
+Vein-to-Vein Distance (VVD)   : 162.4507
+------------------------------------------------------------
+
+IMAGEN: rf13-2p.tif (Grupo 2)
+Tamaño: 892x626
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015353
+Vein Thickness (VT)           : 3.1833
+Areole Size (AS)              : 18518.6857
+Number of Areoles (NA)        : 25.0000
+Branching Angle (BA)          : 113.6082
+Vein-to-Vein Distance (VVD)   : 160.7669
+------------------------------------------------------------
+
+IMAGEN: rf14-1p.tif (Grupo 1)
+Tamaño: 961x923
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012193
+Vein Thickness (VT)           : 3.1497
+Areole Size (AS)              : 14099.4919
+Number of Areoles (NA)        : 35.0000
+Branching Angle (BA)          : 113.8663
+Vein-to-Vein Distance (VVD)   : 132.1593
+------------------------------------------------------------
+
+IMAGEN: rf15-0p.tif (Grupo 0)
+Tamaño: 1111x1213
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009957
+Vein Thickness (VT)           : 2.9536
+Areole Size (AS)              : 14942.8192
+Number of Areoles (NA)        : 33.0000
+Branching Angle (BA)          : 113.8759
+Vein-to-Vein Distance (VVD)   : 141.9475
+------------------------------------------------------------
+
+IMAGEN: rf16-1p.tif (Grupo 1)
+Tamaño: 982x939
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.010689
+Vein Thickness (VT)           : 2.9101
+Areole Size (AS)              : 17648.0182
+Number of Areoles (NA)        : 28.0000
+Branching Angle (BA)          : 112.6309
+Vein-to-Vein Distance (VVD)   : 167.1830
+------------------------------------------------------------
+
+IMAGEN: rf18-0p.tif (Grupo 0)
+Tamaño: 1023x705
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.022081
+Vein Thickness (VT)           : 3.0120
+Areole Size (AS)              : 12023.5849
+Number of Areoles (NA)        : 38.0000
+Branching Angle (BA)          : 112.4708
+Vein-to-Vein Distance (VVD)   : 253.5332
+------------------------------------------------------------
+
+IMAGEN: rf21-1p.tif (Grupo 1)
+Tamaño: 903x914
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012706
+Vein Thickness (VT)           : 3.0851
+Areole Size (AS)              : 14517.5161
+Number of Areoles (NA)        : 34.0000
+Branching Angle (BA)          : 112.8035
+Vein-to-Vein Distance (VVD)   : 153.6316
+------------------------------------------------------------
+
+IMAGEN: rf22-1p.tif (Grupo 1)
+Tamaño: 1046x754
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.010748
+Vein Thickness (VT)           : 3.2110
+Areole Size (AS)              : 13801.4164
+Number of Areoles (NA)        : 34.0000
+Branching Angle (BA)          : 112.0056
+Vein-to-Vein Distance (VVD)   : 134.5549
+------------------------------------------------------------
+
+IMAGEN: rf23-0p.tif (Grupo 0)
+Tamaño: 1114x864
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011696
+Vein Thickness (VT)           : 2.8164
+Areole Size (AS)              : 21754.8960
+Number of Areoles (NA)        : 22.0000
+Branching Angle (BA)          : 113.7551
+Vein-to-Vein Distance (VVD)   : 156.8914
+------------------------------------------------------------
+
+IMAGEN: rf25-1p.tif (Grupo 1)
+Tamaño: 966x703
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012939
+Vein Thickness (VT)           : 3.1430
+Areole Size (AS)              : 16192.6540
+Number of Areoles (NA)        : 29.0000
+Branching Angle (BA)          : 112.7331
+Vein-to-Vein Distance (VVD)   : 205.8955
+------------------------------------------------------------
+
+IMAGEN: rf26-2p.tif (Grupo 2)
+Tamaño: 886x818
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013420
+Vein Thickness (VT)           : 3.8824
+Areole Size (AS)              : 14047.7107
+Number of Areoles (NA)        : 35.0000
+Branching Angle (BA)          : 111.8886
+Vein-to-Vein Distance (VVD)   : 168.2099
+------------------------------------------------------------
+
+IMAGEN: rf28-0p.tif (Grupo 0)
+Tamaño: 1046x773
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015902
+Vein Thickness (VT)           : 3.0341
+Areole Size (AS)              : 22398.2038
+Number of Areoles (NA)        : 21.0000
+Branching Angle (BA)          : 113.4137
+Vein-to-Vein Distance (VVD)   : 222.0255
+------------------------------------------------------------
+
+IMAGEN: rf44-0p.tif (Grupo 0)
+Tamaño: 1051x754
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009264
+Vein Thickness (VT)           : 2.9466
+Areole Size (AS)              : 117310.3853
+Number of Areoles (NA)        : 4.0000
+Branching Angle (BA)          : 114.9778
+Vein-to-Vein Distance (VVD)   : 159.2440
+------------------------------------------------------------
+
+IMAGEN: rf51-2p.tif (Grupo 2)
+Tamaño: 506x383
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013612
+Vein Thickness (VT)           : 4.6018
+Areole Size (AS)              : 22591.3346
+Number of Areoles (NA)        : 21.0000
+Branching Angle (BA)          : 106.8810
+Vein-to-Vein Distance (VVD)   : 151.7331
+------------------------------------------------------------
+
+IMAGEN: rf510-1p.tif (Grupo 1)
+Tamaño: 1018x732
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015333
+Vein Thickness (VT)           : 3.1355
+Areole Size (AS)              : 12613.1444
+Number of Areoles (NA)        : 37.0000
+Branching Angle (BA)          : 111.6360
+Vein-to-Vein Distance (VVD)   : 189.9664
+------------------------------------------------------------
+
+IMAGEN: rf52-1p.tif (Grupo 1)
+Tamaño: 1109x966
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011308
+Vein Thickness (VT)           : 3.2540
+Areole Size (AS)              : 25771.2213
+Number of Areoles (NA)        : 19.0000
+Branching Angle (BA)          : 112.1856
+Vein-to-Vein Distance (VVD)   : 138.5603
+------------------------------------------------------------
+
+IMAGEN: rf53-0p.tif (Grupo 0)
+Tamaño: 1229x652
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.019070
+Vein Thickness (VT)           : 2.8915
+Areole Size (AS)              : 14503.1687
+Number of Areoles (NA)        : 28.0000
+Branching Angle (BA)          : 114.0779
+Vein-to-Vein Distance (VVD)   : 188.3715
+------------------------------------------------------------
+
+IMAGEN: rf54-2p.tif (Grupo 2)
+Tamaño: 913x855
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012672
+Vein Thickness (VT)           : 3.0930
+Areole Size (AS)              : 16419.5738
+Number of Areoles (NA)        : 30.0000
+Branching Angle (BA)          : 114.5641
+Vein-to-Vein Distance (VVD)   : 150.3449
+------------------------------------------------------------
+
+IMAGEN: rf56-0p.tif (Grupo 0)
+Tamaño: 921x693
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.019423
+Vein Thickness (VT)           : 2.8248
+Areole Size (AS)              : 17447.9073
+Number of Areoles (NA)        : 27.0000
+Branching Angle (BA)          : 113.5373
+Vein-to-Vein Distance (VVD)   : 185.1427
+------------------------------------------------------------
+
+IMAGEN: rf57-0p.tif (Grupo 0)
+Tamaño: 1274x750
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.016962
+Vein Thickness (VT)           : 2.7727
+Areole Size (AS)              : 11309.5442
+Number of Areoles (NA)        : 38.0000
+Branching Angle (BA)          : 114.2647
+Vein-to-Vein Distance (VVD)   : 149.1659
+------------------------------------------------------------
+
+IMAGEN: rf58-1p.tif (Grupo 1)
+Tamaño: 1080x858
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.014327
+Vein Thickness (VT)           : 3.1343
+Areole Size (AS)              : 9412.6127
+Number of Areoles (NA)        : 51.0000
+Branching Angle (BA)          : 113.5412
+Vein-to-Vein Distance (VVD)   : 188.6985
+------------------------------------------------------------
+
+IMAGEN: rf59-0p.tif (Grupo 0)
+Tamaño: 525x342
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.014965
+Vein Thickness (VT)           : 4.4764
+Areole Size (AS)              : 32164.4992
+Number of Areoles (NA)        : 14.0000
+Branching Angle (BA)          : 108.1696
+Vein-to-Vein Distance (VVD)   : 179.3063
+------------------------------------------------------------
+
+IMAGEN: rf71-2p.tif (Grupo 2)
+Tamaño: 913x874
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011410
+Vein Thickness (VT)           : 3.3093
+Areole Size (AS)              : 17027.6652
+Number of Areoles (NA)        : 29.0000
+Branching Angle (BA)          : 111.8824
+Vein-to-Vein Distance (VVD)   : 210.4230
+------------------------------------------------------------
+
+IMAGEN: rf72-0p.tif (Grupo 0)
+Tamaño: 451x288
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.022912
+Vein Thickness (VT)           : 4.7539
+Areole Size (AS)              : 17031.4991
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 108.6158
+Vein-to-Vein Distance (VVD)   : 196.9439
+------------------------------------------------------------
+
+IMAGEN: rf73-2p.tif (Grupo 2)
+Tamaño: 953x726
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009937
+Vein Thickness (VT)           : 3.0088
+Areole Size (AS)              : 19885.5396
+Number of Areoles (NA)        : 24.0000
+Branching Angle (BA)          : 111.8667
+Vein-to-Vein Distance (VVD)   : 136.0115
+------------------------------------------------------------
+
+IMAGEN: rf74-2p.tif (Grupo 2)
+Tamaño: 882x657
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013743
+Vein Thickness (VT)           : 2.9634
+Areole Size (AS)              : 17498.5534
+Number of Areoles (NA)        : 27.0000
+Branching Angle (BA)          : 112.7357
+Vein-to-Vein Distance (VVD)   : 199.0324
+------------------------------------------------------------
+
+IMAGEN: rf75-0p.tif (Grupo 0)
+Tamaño: 1002x626
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.016041
+Vein Thickness (VT)           : 2.9777
+Areole Size (AS)              : 17685.7323
+Number of Areoles (NA)        : 25.0000
+Branching Angle (BA)          : 114.1429
+Vein-to-Vein Distance (VVD)   : 160.2428
+------------------------------------------------------------
+
+IMAGEN: rf76-0p.tif (Grupo 0)
+Tamaño: 1138x487
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.019848
+Vein Thickness (VT)           : 2.8933
+Areole Size (AS)              : 13130.4150
+Number of Areoles (NA)        : 27.0000
+Branching Angle (BA)          : 114.3149
+Vein-to-Vein Distance (VVD)   : 182.5968
+------------------------------------------------------------
+
+IMAGEN: rf77-1p.tif (Grupo 1)
+Tamaño: 1130x705
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.010272
+Vein Thickness (VT)           : 3.3254
+Areole Size (AS)              : 40406.3408
+Number of Areoles (NA)        : 11.0000
+Branching Angle (BA)          : 113.9318
+Vein-to-Vein Distance (VVD)   : 192.0004
+------------------------------------------------------------
+
+IMAGEN: rf78-2p.tif (Grupo 2)
+Tamaño: 862x626
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013267
+Vein Thickness (VT)           : 3.4285
+Areole Size (AS)              : 16176.3187
+Number of Areoles (NA)        : 29.0000
+Branching Angle (BA)          : 113.3429
+Vein-to-Vein Distance (VVD)   : 160.0939
+------------------------------------------------------------
+
+IMAGEN: rf79-1p.tif (Grupo 1)
+Tamaño: 1051x914
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009012
+Vein Thickness (VT)           : 2.7538
+Areole Size (AS)              : 18872.7492
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 113.4741
+Vein-to-Vein Distance (VVD)   : 152.0135
+------------------------------------------------------------
+
+IMAGEN: rs21-0p.tif (Grupo 0)
+Tamaño: 982x576
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.017227
+Vein Thickness (VT)           : 2.8409
+Areole Size (AS)              : 23826.5223
+Number of Areoles (NA)        : 18.0000
+Branching Angle (BA)          : 112.8655
+Vein-to-Vein Distance (VVD)   : 154.7794
+------------------------------------------------------------
+
+IMAGEN: rs22-1p.tif (Grupo 1)
+Tamaño: 971x816
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012048
+Vein Thickness (VT)           : 3.0242
+Areole Size (AS)              : 16778.1966
+Number of Areoles (NA)        : 29.0000
+Branching Angle (BA)          : 111.9706
+Vein-to-Vein Distance (VVD)   : 155.2451
+------------------------------------------------------------
+
+IMAGEN: rs23-2p.tif (Grupo 2)
+Tamaño: 1071x945
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.007060
+Vein Thickness (VT)           : 2.7422
+Areole Size (AS)              : 32840.1794
+Number of Areoles (NA)        : 15.0000
+Branching Angle (BA)          : 112.3929
+Vein-to-Vein Distance (VVD)   : 174.2242
+------------------------------------------------------------
+
+IMAGEN: rs24-1p.tif (Grupo 1)
+Tamaño: 1002x736
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009288
+Vein Thickness (VT)           : 2.6849
+Areole Size (AS)              : 94534.1269
+Number of Areoles (NA)        : 5.0000
+Branching Angle (BA)          : 114.3980
+Vein-to-Vein Distance (VVD)   : 170.5472
+------------------------------------------------------------
+
+IMAGEN: rs25-0p.tif (Grupo 0)
+Tamaño: 1012x605
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.000000
+Vein Thickness (VT)           : 0.0000
+Areole Size (AS)              : 440421.2725
+Number of Areoles (NA)        : 1.0000
+Branching Angle (BA)          : 0.0000
+Vein-to-Vein Distance (VVD)   : 0.0000
+------------------------------------------------------------
+
+IMAGEN: rs26-2p.tif (Grupo 2)
+Tamaño: 863x596
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.006330
+Vein Thickness (VT)           : 2.9221
+Areole Size (AS)              : 92920.3580
+Number of Areoles (NA)        : 5.0000
+Branching Angle (BA)          : 111.5233
+Vein-to-Vein Distance (VVD)   : 240.6182
+------------------------------------------------------------
+
+IMAGEN: rs27-2p.tif (Grupo 2)
+Tamaño: 982x925
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009036
+Vein Thickness (VT)           : 2.8328
+Areole Size (AS)              : 27477.4488
+Number of Areoles (NA)        : 18.0000
+Branching Angle (BA)          : 113.6389
+Vein-to-Vein Distance (VVD)   : 185.4833
+------------------------------------------------------------
+
+IMAGEN: rs28-1p.tif (Grupo 1)
+Tamaño: 1051x666
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011728
+Vein Thickness (VT)           : 2.9494
+Areole Size (AS)              : 17184.8005
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 113.8976
+Vein-to-Vein Distance (VVD)   : 186.4184
+------------------------------------------------------------
+
+IMAGEN: rs29-0p.tif (Grupo 0)
+Tamaño: 451x343
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.023194
+Vein Thickness (VT)           : 4.6950
+Areole Size (AS)              : 13440.9861
+Number of Areoles (NA)        : 35.0000
+Branching Angle (BA)          : 109.2293
+Vein-to-Vein Distance (VVD)   : 202.5925
+------------------------------------------------------------
+
+IMAGEN: rs41-2p.tif (Grupo 2)
+Tamaño: 933x915
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013264
+Vein Thickness (VT)           : 2.7586
+Areole Size (AS)              : 14092.8918
+Number of Areoles (NA)        : 35.0000
+Branching Angle (BA)          : 113.7016
+Vein-to-Vein Distance (VVD)   : 132.2359
+------------------------------------------------------------
+
+IMAGEN: rs42-1p.tif (Grupo 1)
+Tamaño: 1165x812
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.009938
+Vein Thickness (VT)           : 2.8203
+Areole Size (AS)              : 19351.2884
+Number of Areoles (NA)        : 24.0000
+Branching Angle (BA)          : 114.3709
+Vein-to-Vein Distance (VVD)   : 219.0931
+------------------------------------------------------------
+
+IMAGEN: rs51-1p.tif (Grupo 1)
+Tamaño: 1111x666
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012009
+Vein Thickness (VT)           : 2.8471
+Areole Size (AS)              : 16757.3483
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 113.9321
+Vein-to-Vein Distance (VVD)   : 208.5147
+------------------------------------------------------------
+
+IMAGEN: rs52-2p.tif (Grupo 2)
+Tamaño: 903x776
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015792
+Vein Thickness (VT)           : 2.8656
+Areole Size (AS)              : 27027.6562
+Number of Areoles (NA)        : 18.0000
+Branching Angle (BA)          : 113.2205
+Vein-to-Vein Distance (VVD)   : 210.8246
+------------------------------------------------------------
+
+IMAGEN: rs53-0p.tif (Grupo 0)
+Tamaño: 1131x640
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013427
+Vein Thickness (VT)           : 2.6041
+Areole Size (AS)              : 32527.9895
+Number of Areoles (NA)        : 13.0000
+Branching Angle (BA)          : 114.1096
+Vein-to-Vein Distance (VVD)   : 130.5962
+------------------------------------------------------------
+
+IMAGEN: rs61-1p.tif (Grupo 1)
+Tamaño: 938x1035
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013039
+Vein Thickness (VT)           : 3.0575
+Areole Size (AS)              : 16369.5902
+Number of Areoles (NA)        : 30.0000
+Branching Angle (BA)          : 113.5702
+Vein-to-Vein Distance (VVD)   : 138.5799
+------------------------------------------------------------
+
+IMAGEN: rs62-0p.tif (Grupo 0)
+Tamaño: 1121x596
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011717
+Vein Thickness (VT)           : 2.5575
+Areole Size (AS)              : 29259.8182
+Number of Areoles (NA)        : 14.0000
+Branching Angle (BA)          : 112.3834
+Vein-to-Vein Distance (VVD)   : 173.3538
+------------------------------------------------------------
+
+IMAGEN: rs63-2p.tif (Grupo 2)
+Tamaño: 1028x807
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013290
+Vein Thickness (VT)           : 3.2935
+Areole Size (AS)              : 12611.1824
+Number of Areoles (NA)        : 38.0000
+Branching Angle (BA)          : 111.8254
+Vein-to-Vein Distance (VVD)   : 161.9254
+------------------------------------------------------------
+
+IMAGEN: rs71-0p.tif (Grupo 0)
+Tamaño: 1194x589
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.017406
+Vein Thickness (VT)           : 3.0338
+Areole Size (AS)              : 13922.5223
+Number of Areoles (NA)        : 28.0000
+Branching Angle (BA)          : 112.8239
+Vein-to-Vein Distance (VVD)   : 170.8188
+------------------------------------------------------------
+
+IMAGEN: rs710-1p.tif (Grupo 1)
+Tamaño: 982x835
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013203
+Vein Thickness (VT)           : 2.9098
+Areole Size (AS)              : 15217.9721
+Number of Areoles (NA)        : 32.0000
+Branching Angle (BA)          : 113.5663
+Vein-to-Vein Distance (VVD)   : 134.1811
+------------------------------------------------------------
+
+IMAGEN: rs72-1p.tif (Grupo 1)
+Tamaño: 1029x801
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.014167
+Vein Thickness (VT)           : 3.0401
+Areole Size (AS)              : 18378.3664
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 113.5130
+Vein-to-Vein Distance (VVD)   : 184.6587
+------------------------------------------------------------
+
+IMAGEN: rs73-0p.tif (Grupo 0)
+Tamaño: 446x342
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.016383
+Vein Thickness (VT)           : 4.6621
+Areole Size (AS)              : 31645.1395
+Number of Areoles (NA)        : 15.0000
+Branching Angle (BA)          : 107.9818
+Vein-to-Vein Distance (VVD)   : 196.4609
+------------------------------------------------------------
+
+IMAGEN: rs74-0p.tif (Grupo 0)
+Tamaño: 1042x586
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.017066
+Vein Thickness (VT)           : 2.7770
+Areole Size (AS)              : 16152.0915
+Number of Areoles (NA)        : 26.0000
+Branching Angle (BA)          : 112.8699
+Vein-to-Vein Distance (VVD)   : 171.3832
+------------------------------------------------------------
+
+IMAGEN: rs76-2p.tif (Grupo 2)
+Tamaño: 882x705
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.014807
+Vein Thickness (VT)           : 3.2500
+Areole Size (AS)              : 20890.4861
+Number of Areoles (NA)        : 23.0000
+Branching Angle (BA)          : 113.1010
+Vein-to-Vein Distance (VVD)   : 152.3395
+------------------------------------------------------------
+
+IMAGEN: rs77-2p.tif (Grupo 2)
+Tamaño: 862x676
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012715
+Vein Thickness (VT)           : 3.3530
+Areole Size (AS)              : 20843.3483
+Number of Areoles (NA)        : 23.0000
+Branching Angle (BA)          : 111.2000
+Vein-to-Vein Distance (VVD)   : 167.7916
+------------------------------------------------------------
+
+IMAGEN: rs78-1p.tif (Grupo 1)
+Tamaño: 1130x964
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.010581
+Vein Thickness (VT)           : 3.0111
+Areole Size (AS)              : 21240.1799
+Number of Areoles (NA)        : 23.0000
+Branching Angle (BA)          : 113.9073
+Vein-to-Vein Distance (VVD)   : 162.5428
+------------------------------------------------------------
+
+IMAGEN: rs79-2p.tif (Grupo 2)
+Tamaño: 913x834
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012572
+Vein Thickness (VT)           : 3.1843
+Areole Size (AS)              : 24584.0595
+Number of Areoles (NA)        : 20.0000
+Branching Angle (BA)          : 111.9658
+Vein-to-Vein Distance (VVD)   : 185.5251
+------------------------------------------------------------
+
+IMAGEN: rs81-1p.tif (Grupo 1)
+Tamaño: 1057x686
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013215
+Vein Thickness (VT)           : 2.9839
+Areole Size (AS)              : 18775.5259
+Number of Areoles (NA)        : 24.0000
+Branching Angle (BA)          : 113.3834
+Vein-to-Vein Distance (VVD)   : 195.5360
+------------------------------------------------------------
+
+IMAGEN: rs82-1p.tif (Grupo 1)
+Tamaño: 971x945
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.000000
+Vein Thickness (VT)           : 0.0000
+Areole Size (AS)              : 499815.8907
+Number of Areoles (NA)        : 1.0000
+Branching Angle (BA)          : 0.0000
+Vein-to-Vein Distance (VVD)   : 0.0000
+------------------------------------------------------------
+
+IMAGEN: rs83-0p.tif (Grupo 0)
+Tamaño: 485x393
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.013373
+Vein Thickness (VT)           : 4.7240
+Areole Size (AS)              : 53609.7695
+Number of Areoles (NA)        : 9.0000
+Branching Angle (BA)          : 107.9745
+Vein-to-Vein Distance (VVD)   : 170.0138
+------------------------------------------------------------
+
+IMAGEN: rs84-2p.tif (Grupo 2)
+Tamaño: 933x635
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011890
+Vein Thickness (VT)           : 2.7969
+Areole Size (AS)              : 25533.1172
+Number of Areoles (NA)        : 18.0000
+Branching Angle (BA)          : 112.5492
+Vein-to-Vein Distance (VVD)   : 198.8880
+------------------------------------------------------------
+
+IMAGEN: rs85-0p.tif (Grupo 0)
+Tamaño: 992x705
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.015291
+Vein Thickness (VT)           : 2.6662
+Areole Size (AS)              : 35766.0946
+Number of Areoles (NA)        : 13.0000
+Branching Angle (BA)          : 115.0189
+Vein-to-Vein Distance (VVD)   : 154.9134
+------------------------------------------------------------
+
+IMAGEN: rs86-2p.tif (Grupo 2)
+Tamaño: 971x790
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.011997
+Vein Thickness (VT)           : 3.2150
+Areole Size (AS)              : 20152.5616
+Number of Areoles (NA)        : 24.0000
+Branching Angle (BA)          : 112.8625
+Vein-to-Vein Distance (VVD)   : 176.6583
+------------------------------------------------------------
+
+IMAGEN: rs87-2p.tif (Grupo 2)
+Tamaño: 436x388
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.012863
+Vein Thickness (VT)           : 6.0744
+Areole Size (AS)              : 49005.9887
+Number of Areoles (NA)        : 10.0000
+Branching Angle (BA)          : 108.0000
+Vein-to-Vein Distance (VVD)   : 176.7071
+------------------------------------------------------------
+
+IMAGEN: rs88-1p.tif (Grupo 1)
+Tamaño: 982x935
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.007275
+Vein Thickness (VT)           : 2.8459
+Areole Size (AS)              : 70821.9207
+Number of Areoles (NA)        : 7.0000
+Branching Angle (BA)          : 113.2218
+Vein-to-Vein Distance (VVD)   : 181.6379
+------------------------------------------------------------
+
+IMAGEN: rs89-0p.tif (Grupo 0)
+Tamaño: 943x716
+Umbral: 0.5
+------------------------------------------------------------
+Vein Density (VD)             : 0.002537
+Vein Thickness (VT)           : 2.6637
+Areole Size (AS)              : 480392.7513
+Number of Areoles (NA)        : 1.0000
+Branching Angle (BA)          : 109.2000
+Vein-to-Vein Distance (VVD)   : 125.7942
+------------------------------------------------------------
+
+
+RESUMEN ESTADÍSTICO POR GRUPO
+====================================================================================================
+
+GRUPO 0 (n=24 imágenes):
+----------------------------------------------------------------------------------------------------
+Vein Density (VD)             : Promedio=0.015235  Min=0.000000  Max=0.023194
+Vein Thickness (VT)           : Promedio=3.106579  Min=0.000000  Max=4.753866
+Areole Size (AS)              : Promedio=62196.601608  Min=10050.826194  Max=480392.751292
+Number of Areoles (NA)        : Promedio=21.625000  Min=1.000000  Max=43.000000
+Branching Angle (BA)          : Promedio=107.674365  Min=0.000000  Max=115.018868
+Vein-to-Vein Distance (VVD)   : Promedio=166.190355  Min=0.000000  Max=253.533212
+
+GRUPO 1 (n=22 imágenes):
+----------------------------------------------------------------------------------------------------
+Vein Density (VD)             : Promedio=0.011183  Min=0.000000  Max=0.015333
+Vein Thickness (VT)           : Promedio=2.876188  Min=0.000000  Max=3.325381
+Areole Size (AS)              : Promedio=45843.653259  Min=9412.612684  Max=499815.890702
+Number of Areoles (NA)        : Promedio=25.318182  Min=1.000000  Max=51.000000
+Branching Angle (BA)          : Promedio=108.115413  Min=0.000000  Max=114.397959
+Vein-to-Vein Distance (VVD)   : Promedio=163.255374  Min=0.000000  Max=219.093059
+
+GRUPO 2 (n=21 imágenes):
+----------------------------------------------------------------------------------------------------
+Vein Density (VD)             : Promedio=0.012405  Min=0.006330  Max=0.015792
+Vein Thickness (VT)           : Promedio=3.410784  Min=2.742224  Max=6.074366
+Areole Size (AS)              : Promedio=25347.284595  Min=12611.182448  Max=92920.358005
+Number of Areoles (NA)        : Promedio=23.238095  Min=5.000000  Max=38.000000
+Branching Angle (BA)          : Promedio=111.900790  Min=106.881029  Max=114.564103
+Vein-to-Vein Distance (VVD)   : Promedio=174.826595  Min=132.235872  Max=240.618181
+
+
+====================================================================================================
+LEYENDA RESUMEN
+====================================================================================================
+VD  : Densidad de venas (0-1)
+VT  : Grosor de venas (px)
+AS  : Tamaño de aréolas (px²)
+NA  : Número de aréolas
+BA  : Ángulo de ramificación (°)
+VVD : Distancia entre venas (px)
+====================================================================================================

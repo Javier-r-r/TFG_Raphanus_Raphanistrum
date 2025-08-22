@@ -20,7 +20,7 @@ from models import CamVidModel, load_config_from_dir, find_stats_in_dir
 from models import preprocess_image_pil, postprocess_mask, color_overlay
 from ui_components import ScrollableFrame
 from theme import create_theme
-from metrics import compute_vein_metrics
+from metrics import compute_normalized_metrics
 from metrics import generate_petal_mask_from_rgb
 
 
@@ -434,7 +434,7 @@ class SegTkApp:
 
             mean_src, std_src = "imagenet", "imagenet"
             # Optional: dataset stats if present
-            mean, std = find_stats_in_dir(path)
+            mean, std = None, None
             if mean is not None or std is not None:
                 mean_src, std_src = model.set_stats(mean, std, device)
 
@@ -597,7 +597,7 @@ class SegTkApp:
             # Generate petal mask from input image if available, and add vein mask
             petal_mask = None
             img_rgb = self.np_input_rgb if self.np_input_rgb is not None else None
-            res = compute_vein_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb)
+            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb)
             self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
@@ -635,7 +635,7 @@ class SegTkApp:
 
             # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
-            res = compute_vein_metrics(mask_bin, petal_mask=petal_mask)
+            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask)
             self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
@@ -789,7 +789,7 @@ class SegTkApp:
                     
                     # Compute metrics
                     mask_bin = (mask >= 128).astype(np.uint8)
-                    metrics = compute_vein_metrics(mask_bin)
+                    metrics = compute_normalized_metrics(mask_bin)
                     
                     # Add to CSV data
                     row_data = {
