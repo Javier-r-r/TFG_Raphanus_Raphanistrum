@@ -24,6 +24,66 @@ def compute_normalized_metrics(mask, petal_mask=None, img_rgb=None, reference_re
     
     return results
 
+from skimage.graph import route_through_array
+
+def count_main_veins(mask, min_length=30):
+    """
+    Cuenta el número de venas principales en la máscara binaria.
+    Usa el esqueleto y filtra por longitud mínima.
+    
+    Args:
+        mask (np.ndarray): máscara binaria de las venas.
+        min_length (int): longitud mínima de píxeles para considerar vena principal.
+    
+    Returns:
+        int: número de venas principales detectadas.
+    """
+    # Esqueletizar
+    skeleton = skeletonize(mask > 0)
+    
+    # Construir grafo
+    G = nx.Graph()
+    coords = np.column_stack(np.where(skeleton))
+    for y, x in coords:
+        G.add_node((y, x))
+    for y, x in coords:
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dy == 0 and dx == 0:
+                    continue
+                ny, nx_coord = y + dy, x + dx
+                if (ny, nx_coord) in G.nodes:
+                    G.add_edge((y, x), (ny, nx_coord))
+    
+    # Extremos del esqueleto (nodos de grado 1)
+    endpoints = [n for n in G.nodes if G.degree[n] == 1]
+    
+    visited = set()
+    vein_count = 0
+    
+    for ep in endpoints:
+        if ep in visited:
+            continue
+        # BFS/DFS para seguir toda la rama hasta que termine
+        path = [ep]
+        current = ep
+        prev = None
+        while True:
+            neighbors = [n for n in G.neighbors(current) if n != prev]
+            if not neighbors:
+                break
+            prev, current = current, neighbors[0]
+            path.append(current)
+            if G.degree[current] != 2:  # junction o endpoint
+                break
+        visited.update(path)
+        
+        # Si la rama es suficientemente larga -> vena principal
+        if len(path) >= min_length:
+            vein_count += 1
+    
+    return vein_count
+
 def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rgb: np.ndarray = None) -> dict:
     """
     Compute vein network metrics. If petal_mask is provided, vein density is calculated
@@ -133,6 +193,8 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
     else:
         mean_vvd = 0
     
+    main_veins = count_main_veins(binary_mask, min_length=5)
+
     # --- Return Results ---
     results = {
         "Vein Density (VD)": vein_density,
@@ -141,5 +203,6 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
         "Number of Areoles (NA)": num_areoles,
         "Branching Angle (BA)": mean_branching_angle,
         "Vein-to-Vein Distance (VVD)": mean_vvd,
+        "Main Veins (MV)": main_veins
     }
     return results

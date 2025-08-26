@@ -621,7 +621,7 @@ class SegTkApp:
             self._set_metrics_preview(pil, f"File: {os.path.basename(path)}")
 
             # Ask user if they want to provide a petal mask
-            use_petal_mask = messagebox.askyesno("Petal Mask", "Do you want to provide a petal mask file for vein density calculation?")
+            use_petal_mask = messagebox.askyesno("Petal Mask", "Provide the original image to calculate petal masks")
             petal_mask = None
             if use_petal_mask:
                 petal_path = filedialog.askopenfilename(
