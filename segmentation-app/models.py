@@ -23,20 +23,8 @@ class CamVidModel(torch.nn.Module):
         )
 
     def set_stats(self, mean: Optional[np.ndarray], std: Optional[np.ndarray], device: torch.device) -> Tuple[str, str]:
-        mean_src, std_src = "imagenet", "imagenet"
-        if mean is not None:
-            m = np.array(mean, dtype=np.float32)
-            if m.max() > 1.5:
-                m = m / 255.0
-            self.mean = torch.tensor(m, dtype=torch.float32, device=device).view(1, 3, 1, 1)
-            mean_src = "dataset_mean.npy"
-        if std is not None:
-            s = np.array(std, dtype=np.float32)
-            if s.max() > 1.5:
-                s = s / 255.0
-            self.std = torch.tensor(s, dtype=torch.float32, device=device).view(1, 3, 1, 1)
-            std_src = "dataset_std.npy"
-        return mean_src, std_src
+        # Always use default ImageNet stats
+        return "imagenet", "imagenet"
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         image = (image - self.mean) / self.std
@@ -57,16 +45,6 @@ def load_config_from_dir(weights_path: str) -> Dict[str, Any]:
     return cfg
 
 
-def find_stats_in_dir(weights_path: str):
-    """Find dataset_mean.npy and dataset_std.npy in the same directory as weights."""
-    base = os.path.dirname(os.path.abspath(weights_path))
-    mean_path = os.path.join(base, "dataset_mean.npy")
-    std_path = os.path.join(base, "dataset_std.npy")
-    mean = np.load(mean_path) if os.path.exists(mean_path) else None
-    std = np.load(std_path) if os.path.exists(std_path) else None
-    return mean, std
-
-
 def preprocess_image_pil(pil_img: Image.Image, target_size: Optional[int] = None):
     """Preprocess PIL image for model inference."""
     img_rgb = np.array(pil_img)  # RGB
@@ -77,6 +55,28 @@ def preprocess_image_pil(pil_img: Image.Image, target_size: Optional[int] = None
     else:
         img_rs = img_rgb
     img_t = torch.from_numpy(img_rs.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+    return img_rgb, img_t, original_size
+
+
+def postprocess_mask(logits: torch.Tensor, threshold: float, out_size: Tuple[int, int]) -> np.ndarray:
+    """Convert model logits to binary mask."""
+    probs = torch.sigmoid(logits)
+    pred = (probs >= threshold).float()
+    mask = pred[0, 0].detach().cpu().numpy().astype(np.uint8) * 255
+    if out_size:
+        mask = cv2.resize(mask, out_size, interpolation=cv2.INTER_NEAREST)
+    return mask
+
+
+def color_overlay(rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, color=(0, 255, 0)) -> np.ndarray:
+    """Create colored overlay of mask on RGB image."""
+    out = rgb.copy()
+    m = mask > 0
+    if m.any():
+        overlay = np.zeros_like(out)
+        overlay[m] = color
+        out[m] = (out[m].astype(np.float32) * (1 - alpha) + overlay[m].astype(np.float32) * alpha).astype(np.uint8)
+    return out
     return img_rgb, img_t, original_size
 
 

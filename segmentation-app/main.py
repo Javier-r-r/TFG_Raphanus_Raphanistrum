@@ -16,7 +16,7 @@ import cv2
 from PIL import Image, ImageTk
 import torch
 
-from models import CamVidModel, load_config_from_dir, find_stats_in_dir
+from models import CamVidModel, load_config_from_dir
 from models import preprocess_image_pil, postprocess_mask, color_overlay
 from ui_components import ScrollableFrame
 from theme import create_theme
@@ -432,11 +432,8 @@ class SegTkApp:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model.to(device)
 
-            mean_src, std_src = "imagenet", "imagenet"
-            # Optional: dataset stats if present
-            mean, std = None, None
-            if mean is not None or std is not None:
-                mean_src, std_src = model.set_stats(mean, std, device)
+            # Always use default stats
+            mean_src, std_src = model.set_stats(None, None, device)
 
             state = torch.load(path, map_location=device)
             load_res = model.load_state_dict(state, strict=False)
@@ -445,9 +442,8 @@ class SegTkApp:
             self.model = model
             
             device_name = "GPU (CUDA)" if device.type == "cuda" else "CPU"
+            # Only show arch, encoder, device, stats
             model_info = f"Architecture: {arch} | Encoder: {enc} | Device: {device_name} | Stats: {mean_src}/{std_src}"
-            if load_res.missing_keys or load_res.unexpected_keys:
-                model_info += f" | Missing keys: {len(load_res.missing_keys)} | Unexpected keys: {len(load_res.unexpected_keys)}"
             
             self._update_model_status("✅ Loaded successfully", "Muted.TLabel", model_info)
             
