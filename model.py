@@ -604,6 +604,18 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                 pred_mask = preds[i].squeeze().cpu().numpy()
                 true_mask = masks[i].squeeze().cpu().numpy()
 
+                # Guardar la máscara predicha y la real como imágenes PNG
+                pred_mask_path = os.path.join(output_dir, f"pred_mask_batch{batch_idx}_img{i}.png")
+                true_mask_path = os.path.join(output_dir, f"true_mask_batch{batch_idx}_img{i}.png")
+
+                cv2.imwrite(pred_mask_path, (pred_mask * 255).astype(np.uint8))
+                cv2.imwrite(true_mask_path, (true_mask * 255).astype(np.uint8))
+
+                # Si quieres guardar también la imagen de entrada:
+                input_img = images[i].cpu().numpy().transpose(1, 2, 0)
+                input_img_path = os.path.join(output_dir, f"input_batch{batch_idx}_img{i}.png")
+                cv2.imwrite(input_img_path, (input_img * 255).astype(np.uint8))
+                
                 # Calcular métricas
                 tp, fp, fn, tn = smp.metrics.get_stats(
                     torch.tensor(pred_mask).unsqueeze(0).unsqueeze(0),
