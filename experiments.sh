@@ -5,8 +5,18 @@ BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
 DATASET_ORIG_IMAGES="../database_petals"
 DATASET_ORIG_MASKS="../masks_petals"
-SPLIT_ROOT="spli
+SPLIT_ROOT="split_temp"
+rm -rf $OUTPUT_DIR $SPLIT_ROOT
+mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}/{split1,split2,split3}
 source ~/myenv/bin/activate
+
+# Generar splits reproducibles 70/15/15 usando database_segmentation.py
+echo "Generando splits reproducibles 70/15/15..."
+for split_num in 1 2 3; do
+    split_dir="$SPLIT_ROOT/split$split_num"
+    mkdir -p $split_dir
+    python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
+done
 
 # Función para ejecutar comandos con log
 run_experiment() {
@@ -24,14 +34,12 @@ ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
 LOSS="dice"
 
 echo "=== Ejecutando experimentos variando arquitecturas (encoder: $ENCODER) ==="
-for split_idx in "${!DATASET_SPLITS[@]}"; do
-    split=${DATASET_SPLITS[$split_idx]}
-    split_num=$((split_idx+1))
+for split_num in 1 2 3; do
+    split="$SPLIT_ROOT/split$split_num"
     echo "--- Usando división de dataset: $split (split$split_num) ---"
-    
     for arch in "${ARCHITECTURES[@]}"; do
         echo "Probando arquitectura: $arch"
-        CMD="$BASE_CMD -arquitectura $arch -encoder $ENCODER -loss $LOSS -output $OUTPUT_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS} --data_split ../experiments/$split"
+        CMD="$BASE_CMD -arquitectura $arch -encoder $ENCODER -loss $LOSS -output $OUTPUT_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS} --data_split $split"
         LOG_FILE="$OUTPUT_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS}.log"
         run_experiment "$CMD" "$LOG_FILE"
     done
@@ -42,14 +50,12 @@ ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
 
 echo "=== Ejecutando experimentos variando encoders (arquitectura: $ARCH) ==="
-for split_idx in "${!DATASET_SPLITS[@]}"; do
-    split=${DATASET_SPLITS[$split_idx]}
-    split_num=$((split_idx+1))
+for split_num in 1 2 3; do
+    split="$SPLIT_ROOT/split$split_num"
     echo "--- Usando división de dataset: $split (split$split_num) ---"
-    
     for encoder in "${ENCODERS[@]}"; do
         echo "Probando encoder: $encoder"
-        CMD="$BASE_CMD -arquitectura $ARCH -encoder $encoder -loss $LOSS -output $OUTPUT_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS} --data_split ../experiments/$split"
+        CMD="$BASE_CMD -arquitectura $ARCH -encoder $encoder -loss $LOSS -output $OUTPUT_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS} --data_split $split"
         LOG_FILE="$OUTPUT_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS}.log"
         run_experiment "$CMD" "$LOG_FILE"
     done
@@ -61,14 +67,12 @@ ENCODER="resnet34"
 LOSSES=("dice" "bce" "focal")
 
 echo "=== Ejecutando experimentos variando funciones de pérdida ==="
-for split_idx in "${!DATASET_SPLITS[@]}"; do
-    split=${DATASET_SPLITS[$split_idx]}
-    split_num=$((split_idx+1))
+for split_num in 1 2 3; do
+    split="$SPLIT_ROOT/split$split_num"
     echo "--- Usando división de dataset: $split (split$split_num) ---"
-    
     for loss in "${LOSSES[@]}"; do
         echo "Probando función de pérdida: $loss"
-        CMD="$BASE_CMD -arquitectura $ARCH -encoder $ENCODER -loss $loss -output $OUTPUT_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss} --data_split ../experiments/$split"
+        CMD="$BASE_CMD -arquitectura $ARCH -encoder $ENCODER -loss $loss -output $OUTPUT_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss} --data_split $split"
         LOG_FILE="$OUTPUT_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss}.log"
         run_experiment "$CMD" "$LOG_FILE"
     done
