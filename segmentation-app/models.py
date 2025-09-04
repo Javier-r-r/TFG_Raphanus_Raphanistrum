@@ -59,29 +59,7 @@ def preprocess_image_pil(pil_img: Image.Image, target_size: Optional[int] = None
 
 
 def postprocess_mask(logits: torch.Tensor, threshold: float, out_size: Tuple[int, int]) -> np.ndarray:
-    """Convert model logits to binary mask."""
-    probs = torch.sigmoid(logits)
-    pred = (probs >= threshold).float()
-    mask = pred[0, 0].detach().cpu().numpy().astype(np.uint8) * 255
-    if out_size:
-        mask = cv2.resize(mask, out_size, interpolation=cv2.INTER_NEAREST)
-    return mask
-
-
-def color_overlay(rgb: np.ndarray, mask: np.ndarray, alpha: float = 0.5, color=(0, 255, 0)) -> np.ndarray:
-    """Create colored overlay of mask on RGB image."""
-    out = rgb.copy()
-    m = mask > 0
-    if m.any():
-        overlay = np.zeros_like(out)
-        overlay[m] = color
-        out[m] = (out[m].astype(np.float32) * (1 - alpha) + overlay[m].astype(np.float32) * alpha).astype(np.uint8)
-    return out
-    return img_rgb, img_t, original_size
-
-
-def postprocess_mask(logits: torch.Tensor, threshold: float, out_size: Tuple[int, int]) -> np.ndarray:
-    """Convert model logits to binary mask."""
+    """Convert model logits to binary mask (0/255)."""
     probs = torch.sigmoid(logits)
     pred = (probs >= threshold).float()
     mask = pred[0, 0].detach().cpu().numpy().astype(np.uint8) * 255

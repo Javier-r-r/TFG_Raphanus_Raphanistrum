@@ -328,9 +328,6 @@ class CamVidModel(torch.nn.Module):
         super().__init__()
         self.mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
         self.std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
-        # Si tienes archivos guardados con tus estadísticos:
-        if os.path.exists('dataset_mean.npy'):
-            self.mean = torch.tensor(np.load('dataset_mean.npy')).view(1, 3, 1, 1).to(device)
         self.model = smp.create_model(
             arch,
             encoder_name=encoder_name,

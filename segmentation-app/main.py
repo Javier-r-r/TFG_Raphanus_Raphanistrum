@@ -11,10 +11,17 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-import numpy as np
-import cv2
+# Added missing PIL imports used throughout the module (Image, ImageTk)
 from PIL import Image, ImageTk
+
+import threading
+import queue
+import numpy as np
 import torch
+from background_worker import run_callable_in_thread
+
+# Añadir OpenCV
+import cv2
 
 from models import CamVidModel, load_config_from_dir
 from models import preprocess_image_pil, postprocess_mask, color_overlay
@@ -85,6 +92,15 @@ class SegTkApp:
         self.last_overlay: Optional[np.ndarray] = None
         self.current_metrics: Optional[Dict[str, Any]] = None
 
+        # Queue para comunicación entre worker y GUI
+        self.task_queue = queue.Queue()
+        # Estado para últimos resultados
+        self.pil_input = None
+        self.last_mask = None
+        self.last_overlay = None
+        # Start polling the queue
+        self.root.after(150, self._poll_task_queue)
+
         # Instructions for the debug console
         self._clear_debug()
         self._write_debug(
@@ -153,19 +169,6 @@ class SegTkApp:
         ttk.Button(actions, text="Segment", command=self.on_segment, style="Accent.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(actions, text="Save Mask", command=self.on_save_mask, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(actions, text="Save Overlay", command=self.on_save_overlay, style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
-
-        # Remove threshold control from here
-        # (delete the following block)
-        # thr_frame = ttk.Frame(card)
-        # thr_frame.grid(row=7, column=0, columnspan=6, sticky="we", pady=4)
-        # thr_frame.columnconfigure(1, weight=1)
-        # ttk.Label(thr_frame, text="Threshold").grid(row=0, column=0, sticky="w")
-        # self.thr_entry = ttk.Entry(thr_frame, width=5, textvariable=self.threshold)
-        # self.thr_entry.grid(row=0, column=2, padx=(0, 10), sticky="e")
-        # ttk.Scale(thr_frame, from_=0.0, to=1.0, variable=self.threshold,
-        #         orient=tk.HORIZONTAL, command=self._on_slider_change).grid(row=0, column=1, sticky="we", padx=10)
-        # self.thr_entry.bind('<FocusOut>', self._validate_threshold)
-        # self.thr_entry.bind('<Return>', self._validate_threshold)
 
         for c in range(6):
             card.columnconfigure(c, weight=1)
@@ -397,6 +400,88 @@ class SegTkApp:
         """Unified notification method."""
         messagebox.showinfo(title, message)
 
+    def _poll_task_queue(self):
+        """Leer mensajes desde la cola de worker y actualizar UI."""
+        try:
+            while True:
+                msg_type, payload = self.task_queue.get_nowait()
+                if msg_type == "log":
+                    self._write_debug(payload)
+                elif msg_type == "progress":
+                    # payload expected as float 0..1
+                    try:
+                        pct = float(payload)
+                        # if you have a progress widget update here
+                        # self.progress_var.set(pct*100)
+                        self._write_debug(f"Progress: {pct*100:.1f}%")
+                    except Exception:
+                        pass
+                elif msg_type == "done":
+                    self._write_debug("Task finished")
+                    self._on_task_done(payload)
+                    self._enable_controls()
+                elif msg_type == "error":
+                    self._write_debug(f"Error: {payload}")
+                    messagebox.showerror("Error", str(payload))
+                    self._enable_controls()
+        except queue.Empty:
+            pass
+        # volver a programar polling
+        self.root.after(150, self._poll_task_queue)
+
+    def _disable_controls(self):
+        """Deshabilitar controles principales para evitar ejecuciones simultáneas."""
+        try:
+            # intenta deshabilitar widgets comunes si existen
+            for name in ("btn_segment", "btn_batch", "btn_load_model", "e_weights"):
+                w = getattr(self, name, None)
+                if w is not None:
+                    try:
+                        w.config(state="disabled")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _enable_controls(self):
+        """Re-habilitar controles tras completar tarea."""
+        try:
+            for name in ("btn_segment", "btn_batch", "btn_load_model", "e_weights"):
+                w = getattr(self, name, None)
+                if w is not None:
+                    try:
+                        w.config(state="normal")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def start_task_in_background(self, fn, args=(), kwargs=None):
+        """Helper para lanzar una función en background y conectar su salida a task_queue."""
+        self._disable_controls()
+        run_callable_in_thread(fn, args=args, kwargs=kwargs or {}, out_q=self.task_queue)
+
+    def _on_task_done(self, result):
+        """Procesar resultado devuelto por el worker (ej.: actualizar previews)."""
+        if not result:
+            return
+        if isinstance(result, dict) and "error" in result:
+            self._write_debug(f"Worker error: {result['error']}")
+            return
+        # Si el worker devuelve máscara y overlay actualiza UI
+        if isinstance(result, dict) and "mask" in result:
+            self.last_mask = result.get("mask")
+            self.last_overlay = result.get("overlay")
+            input_img = result.get("input_img")
+            # Actualiza vistas en hilo principal
+            try:
+                if input_img is not None and hasattr(self, "_input_preview_label"):
+                    self._show_preview(Image.fromarray(input_img), self._input_preview_label)
+                if self.last_overlay is not None and hasattr(self, "_overlay_preview_label"):
+                    self._show_preview(Image.fromarray(self.last_overlay), self._overlay_preview_label)
+            except Exception:
+                pass
+
     # -------- App actions --------
 
     def on_browse_weights(self):
@@ -500,54 +585,32 @@ class SegTkApp:
             return None
 
     def on_segment(self, redraw_only: bool = False):
-        """Run segmentation inference."""
-        if self.model is None:
-            messagebox.showwarning("Model", "Please load model weights first.")
-            return
-        if self.pil_input is None:
-            messagebox.showwarning("Image", "Please open an image first.")
-            return
+        """Lanza la inferencia en un thread para no bloquear la GUI."""
+        def _segment_task(redraw_only):
+            """Esta función se ejecuta en background — NUNCA tocar widgets aquí."""
+            try:
+                if getattr(self, "pil_input", None) is None:
+                    return {"error": "No input image loaded"}
+                if getattr(self, "model", None) is None:
+                    return {"error": "Model not loaded"}
 
-        thr = float(self.threshold.get())
-        alpha = float(self.alpha.get())
-        target_size = self._get_default_resize()
+                # Preprocesado (usa helper desde models.py)
+                pil = self.pil_input
+                img_rgb, img_t, original_size = preprocess_image_pil(pil, target_size=self._get_default_resize())
+                device = next(self.model.parameters()).device if hasattr(self, "model") else torch.device("cpu")
+                img_t = img_t.to(device)
+                with torch.no_grad():
+                    logits = self.model(img_t)
+                thresh = float(self.threshold.get()) if hasattr(self, "threshold") else 0.5
+                mask = postprocess_mask(logits, threshold=thresh, out_size=(original_size[0], original_size[1]))
+                alpha = float(self.alpha.get()) if hasattr(self, "alpha") else 0.5
+                overlay = color_overlay(img_rgb, mask, alpha=alpha)
+                return {"mask": mask, "overlay": overlay, "input_img": img_rgb}
+            except Exception as e:
+                return {"error": str(e)}
 
-        try:
-            img_rgb, img_t, original_size = preprocess_image_pil(self.pil_input, target_size=target_size)
-            with torch.no_grad():
-                logits = self.model(img_t.to(next(self.model.parameters()).device))
-            mask = postprocess_mask(logits, thr, out_size=original_size)
-            overlay = color_overlay(img_rgb, mask, alpha=alpha, color=(0, 255, 0))
-
-            self.last_mask = mask
-            self.last_overlay = overlay
-
-            pil_mask = Image.fromarray(mask)
-            self._show_preview(pil_mask, self.label_mask, max_size=(1000, 600), is_mask=True)
-
-            pil_overlay = Image.fromarray(overlay)
-            self._show_preview(pil_overlay, self.label_overlay, max_size=(1000, 600))
-
-            self._write_debug(f"Inference done. thr={thr:.2f} alpha={alpha:.2f}, out={original_size}")
-            if not redraw_only:
-                # Switch to Overlay tab after a full run
-                self.preview_nb.select(2)
-                self._show_notification("Segmentación completada", "El proceso de segmentación ha finalizado correctamente")
-        except Exception as e:
-            messagebox.showerror("Error", f"Inference failed:\n{e}")
-
-    def _show_preview(self, pil_img: Image.Image, widget: ttk.Label, max_size=(1000, 600), is_mask=False):
-        """Show image preview in widget."""
-        img = pil_img.copy()
-        img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        if is_mask and img.mode != "L":
-            img = img.convert("L")
-        elif not is_mask and img.mode != "RGB":
-            img = img.convert("RGB")
-        photo = ImageTk.PhotoImage(img)
-        widget.config(image=photo)
-        # Keep a reference on the widget to avoid GC
-        widget.image = photo
+        # lanzar en background y retornar inmediatamente
+        self.start_task_in_background(_segment_task, args=(redraw_only,))
 
     def on_save_mask(self):
         """Save the predicted mask."""
