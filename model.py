@@ -658,103 +658,115 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 # ----------------------------
 # Create and train the model
 # ----------------------------
-max_iter = epochs_max
+def main():
+	max_iter = epochs_max
 
-args = parse_args()
+	args = parse_args()
 
-output_dir = args.output_dir
-os.makedirs(output_dir, exist_ok=True)
+	output_dir = args.output_dir
+	os.makedirs(output_dir, exist_ok=True)
 
-test_losses = []
-iou_scores = []
-all_metrics = []
+	# Define las rutas de datos (train/val/test) a partir de data_split
+	train_images_dir = os.path.join(args.data_split, 'train', 'images')
+	train_masks_dir = os.path.join(args.data_split, 'train', 'masks')
+	val_images_dir = os.path.join(args.data_split, 'val', 'images')
+	val_masks_dir = os.path.join(args.data_split, 'val', 'masks')
+	test_images_dir = os.path.join(args.data_split, 'test', 'images')
+	test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
 
-# Configura la función de pérdida según el argumento
-if args.loss_fn.lower() == 'bce':
-    loss_fn = smp.losses.SoftBCEWithLogitsLoss()
-elif args.loss_fn.lower() == 'focal':
-    loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
-else:  # default es Dice
-    loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
-torch.cuda.empty_cache()
+	# Crear datasets
+	train_dataset = PetalVeinDataset(
+		images_dir=train_images_dir,
+		masks_dir=train_masks_dir,
+		input_image_reshape=input_image_reshape,
+		augmentation=augmentation_train,
+		normalize=True,
+	)
+	val_dataset = PetalVeinDataset(
+		images_dir=val_images_dir,
+		masks_dir=val_masks_dir,
+		input_image_reshape=input_image_reshape,
+		augmentation=augmentation_val_test,
+		normalize=True,
+	)
+	test_dataset = PetalVeinDataset(
+		images_dir=test_images_dir,
+		masks_dir=test_masks_dir,
+		input_image_reshape=input_image_reshape,
+		augmentation=augmentation_val_test,
+		normalize=True,
+	)
 
-print(f"\n=== Entrenamiento ===")
+	# Crear dataloaders (ajusta num_workers si hace falta)
+	pin_memory = True if device == "cuda" else False
+	train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=pin_memory)
+	valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
+	test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
 
-# Configuración de paths usando el argumento data_split
-train_images_dir = os.path.join(args.data_split, 'train', 'images')
-train_masks_dir = os.path.join(args.data_split, 'train', 'masks')
-val_images_dir = os.path.join(args.data_split, 'val', 'images')
-val_masks_dir = os.path.join(args.data_split, 'val', 'masks')
-test_images_dir = os.path.join(args.data_split, 'test', 'images')
-test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
+	# Define las configuraciones que quieres comparar
+	architectures = [args.arch]  # Puedes poner varias: ['Unet', 'FPN', ...]
+	encoders = [args.encoder_name]  # Varias si quieres comparar
+	loss_functions = [args.loss_fn]  # Varias si quieres comparar
 
-# Crear DataLoaders (igual que antes)
-train_dataset = PetalVeinDataset(
-    images_dir=train_images_dir,
-    masks_dir=train_masks_dir,
-    input_image_reshape=input_image_reshape,
-    augmentation=augmentation_train
-)
-val_dataset = PetalVeinDataset(
-    images_dir=val_images_dir,
-    masks_dir=val_masks_dir,
-    input_image_reshape=input_image_reshape,
-    augmentation=augmentation_val_test
-)
+	all_metrics = []
 
-test_dataset = PetalVeinDataset(
-    images_dir=test_images_dir,
-    masks_dir=test_masks_dir,
-    input_image_reshape=input_image_reshape,
-    augmentation=augmentation_val_test
-)
+	for arch in architectures:
+		for encoder in encoders:
+			for loss_name in loss_functions:
+				# Configura la función de pérdida según el nombre
+				if loss_name.lower() == 'bce':
+					loss_fn = smp.losses.SoftBCEWithLogitsLoss()
+				elif loss_name.lower() == 'focal':
+					loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
+				else:  # default es Dice
+					loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+				torch.cuda.empty_cache()
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+				# Reiniciar el modelo y optimizador para cada entrenamiento
+				model = CamVidModel(arch, encoder, in_channels=3, out_classes=1).to(device)
+				optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
+				scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
 
-# Reiniciar el modelo y optimizador para cada entrenamiento
-model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
-scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
+				# Configura la semilla para reproducibilidad
+				torch.manual_seed(0)
+				np.random.seed(0)
+				if device == "cuda":
+					torch.cuda.manual_seed_all(0)
 
-# Calcular estadísticos del conjunto de entrenamiento
-train_mean, train_std = compute_dataset_statistics(train_images_dir)
+				# Entrenar
+				history = train_model(
+					model, 
+					train_loader, 
+					valid_loader, 
+					optimizer, 
+					scheduler, 
+					loss_fn, 
+					device, 
+					epochs_max,
+					output_dir=args.output_dir,  # Pasa el directorio de salida
+					patience=early_stop_patience,
+					min_delta=early_stop_min_delta,
+					args=args
+				)
 
-print(f"Media del dataset: {train_mean}")
-print(f"Desviación estándar: {train_std}")
+				# Evaluar
+				metrics = test_model(
+					model, 
+					args.output_dir, 
+					test_loader, 
+					loss_fn, 
+					device
+				)
 
-# Guardar estos valores para uso futuro
-np.save(os.path.join(output_dir, 'dataset_mean.npy'), train_mean)
-np.save(os.path.join(output_dir, 'dataset_std.npy'), train_std)
+				# Añade información de configuración a las métricas
+				metrics['arch'] = arch
+				metrics['encoder'] = encoder
+				metrics['loss_fn'] = loss_name
+				all_metrics.append(metrics)
 
-# Entrenar
-history = train_model(
-    model, 
-    train_loader, 
-    valid_loader, 
-    optimizer, 
-    scheduler, 
-    loss_fn, 
-    device, 
-    epochs_max,
-    output_dir=args.output_dir,  # Pasa el directorio de salida
-    patience=early_stop_patience,
-    min_delta=early_stop_min_delta,
-    args=args
-)
+	# Convertir a DataFrame y guardar en CSV
+	df_metrics = pd.DataFrame(all_metrics)
+	df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
 
-# Evaluar
-metrics = test_model(
-    model, 
-    args.output_dir, 
-    test_loader, 
-    loss_fn, 
-    device
-)
-
-all_metrics.append(metrics)
-
-# Convertir a DataFrame y guardar en CSV
-df_metrics = pd.DataFrame(all_metrics)
-df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
+if __name__ == "__main__":
+	main()
