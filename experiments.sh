@@ -3,9 +3,9 @@
 # Configuración básica
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
-DATASET_SPLITS=("experiment_70_15_15" "experiment_60_20_20" "experiment_80_10_10")
-rm -rf $OUTPUT_DIR
-mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}/{split1,split2,split3}
+DATASET_ORIG_IMAGES="../database_petals"
+DATASET_ORIG_MASKS="../masks_petals"
+SPLIT_ROOT="spli
 source ~/myenv/bin/activate
 
 # Función para ejecutar comandos con log
