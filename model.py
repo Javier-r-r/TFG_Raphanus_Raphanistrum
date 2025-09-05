@@ -730,6 +730,10 @@ def main():
 					loss_fn = smp.losses.SoftBCEWithLogitsLoss()
 				elif loss_name.lower() == 'focal':
 					loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
+				elif loss_name.lower() == 'dice':
+					loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+				elif loss_name.lower() == 'bce_dice':
+					loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
 				else:  # default: BCE + Dice
 					loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
 				torch.cuda.empty_cache()

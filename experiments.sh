@@ -64,7 +64,7 @@ done
 # 3. Experimentos variando funciones de pérdida (arquitectura: Unet, encoder: resnet34)
 ARCH="Unet"
 ENCODER="resnet34"
-LOSSES=("dice" "bce" "focal")
+LOSSES=("dice" "bce" "focal" "bce_dice")
 
 echo "=== Ejecutando experimentos variando funciones de pérdida ==="
 for split_num in 1 2 3; do
