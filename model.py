@@ -444,7 +444,7 @@ def train_and_evaluate_one_epoch(
         outputs = model(images)
 
         # Asegurar que las máscaras tengan la forma correcta
-        if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
+        if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss, BCEDiceLoss)):
             masks = masks.unsqueeze(1).float()  # Añade dimensión de canal si es necesario
         else:
             masks = masks.float()
@@ -467,7 +467,7 @@ def train_and_evaluate_one_epoch(
             images, masks = images.to(device), masks.to(device)
 
             outputs = model(images)
-            if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
+            if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss, BCEDiceLoss)):
                 masks = masks.unsqueeze(1).float()
             else:
                 masks = masks.float()
@@ -557,6 +557,7 @@ def train_model(
     
     if output_dir and args:
         args_dict = vars(args)
+        args_dict['epoch_stopped'] = epoch + 1  # Guardar la epoch real (1-based)
         with open(os.path.join(output_dir, 'config.json'), 'w') as f:
             json.dump(args_dict, f, indent=4)
     
@@ -652,6 +653,20 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
 
     return aggregate_metrics
 
+# Añadir clase para combinar BCE y Dice
+class BCEDiceLoss(torch.nn.Module):
+    def __init__(self, dice_weight=0.5, bce_weight=0.5):
+        super().__init__()
+        self.dice = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+        self.bce = torch.nn.BCEWithLogitsLoss()
+        self.dice_weight = dice_weight
+        self.bce_weight = bce_weight
+
+    def forward(self, inputs, targets):
+        dice_loss = self.dice(inputs, targets)
+        bce_loss = self.bce(inputs, targets)
+        return self.dice_weight * dice_loss + self.bce_weight * bce_loss
+
 # ----------------------------
 # Create and train the model
 # ----------------------------
@@ -715,8 +730,8 @@ def main():
 					loss_fn = smp.losses.SoftBCEWithLogitsLoss()
 				elif loss_name.lower() == 'focal':
 					loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
-				else:  # default es Dice
-					loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+				else:  # default: BCE + Dice
+					loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
 				torch.cuda.empty_cache()
 
 				# Reiniciar el modelo y optimizador para cada entrenamiento
