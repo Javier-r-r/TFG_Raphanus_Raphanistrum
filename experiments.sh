@@ -139,11 +139,11 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                 # Leer de metricas_detalladas.csv si existe
                 if [ -f "$exp_dir/metricas_detalladas.csv" ]; then
                     metrics=$(tail -n 1 "$exp_dir/metricas_detalladas.csv")
-                    test_loss=$(echo "$metrics" | cut -d',' -f2)
-                    iou_score=$(echo "$metrics" | cut -d',' -f3)
-                    precision=$(echo "$metrics" | cut -d',' -f4)
-                    recall=$(echo "$metrics" | cut -d',' -f5)
-                    f1_score=$(echo "$metrics" | cut -d',' -f6)
+                    test_loss=$(echo "$metrics" | cut -d',' -f1)
+                    iou_score=$(echo "$metrics" | cut -d',' -f2)
+                    precision=$(echo "$metrics" | cut -d',' -f3)
+                    recall=$(echo "$metrics" | cut -d',' -f4)
+                    f1_score=$(echo "$metrics" | cut -d',' -f5)
                 fi
 
                 # Leer información adicional de config.json
@@ -156,7 +156,7 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                     train_time=$(tail -n 1 "$exp_dir/train_history.csv" | cut -d',' -f3)
                 fi
 
-                # Escribir en el resumen básico
+                # Escribir en el resumen básico (sin repetir el nombre de la arquitectura en f1_score ni en model_path)
                 echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$exp_dir" >> "$SUMMARY_FILE"
 
                 # Escribir en el resumen detallado

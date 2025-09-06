@@ -630,6 +630,7 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                 precision = smp.metrics.precision(tp, fp, fn, tn, reduction="micro")
                 recall = smp.metrics.recall(tp, fp, fn, tn, reduction="micro")
                 f1_score = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
+                print(f"Image {batch_idx}_{i} - IoU: {iou_score.item():.4f}, Precision: {precision.item():.4f}, Recall: {recall.item():.4f}, F1: {f1_score.item():.4f}")
 
                 image_metrics.append({
                     "image_id": f"batch_{batch_idx}_image_{i}",
