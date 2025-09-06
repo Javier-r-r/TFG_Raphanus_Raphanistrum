@@ -28,12 +28,13 @@ run_experiment() {
     echo "Fin: $(date)" >> "$log_file"
 }
 
-# 1. Experimentos variando arquitecturas (encoder fijo: resnet34)
+
+# 1. Experimentos variando arquitecturas (encoder fijo: resnet34, loss por defecto: bce_dice)
 ENCODER="resnet34"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
-LOSS="dice"
+LOSS="bce_dice"
 
-echo "=== Ejecutando experimentos variando arquitecturas (encoder: $ENCODER) ==="
+echo "=== Ejecutando experimentos variando arquitecturas (encoder: $ENCODER, loss: $LOSS) ==="
 for split_num in 1 2 3; do
     split="$SPLIT_ROOT/split$split_num"
     echo "--- Usando división de dataset: $split (split$split_num) ---"
@@ -45,11 +46,13 @@ for split_num in 1 2 3; do
     done
 done
 
-# 2. Experimentos variando encoders (arquitectura fija: Unet)
+
+# 2. Experimentos variando encoders (arquitectura fija: Unet, loss por defecto: bce_dice)
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
+LOSS="bce_dice"
 
-echo "=== Ejecutando experimentos variando encoders (arquitectura: $ARCH) ==="
+echo "=== Ejecutando experimentos variando encoders (arquitectura: $ARCH, loss: $LOSS) ==="
 for split_num in 1 2 3; do
     split="$SPLIT_ROOT/split$split_num"
     echo "--- Usando división de dataset: $split (split$split_num) ---"
@@ -60,6 +63,7 @@ for split_num in 1 2 3; do
         run_experiment "$CMD" "$LOG_FILE"
     done
 done
+
 
 # 3. Experimentos variando funciones de pérdida (arquitectura: Unet, encoder: resnet34)
 ARCH="Unet"
