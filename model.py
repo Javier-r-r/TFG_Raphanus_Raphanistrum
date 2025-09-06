@@ -593,6 +593,10 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                 loss_input = probs  # Usar probabilidades ya normalizadas
                 target = masks.float()  # Mantener forma (B, H, W)
 
+            # Justo antes de calcular la pérdida:
+            if target.ndim == 3:
+                target = target.unsqueeze(1)  # [B, H, W] -> [B, 1, H, W]
+
             loss = loss_fn(loss_input, target)
             test_loss += loss.item()
 
