@@ -640,20 +640,36 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                     "recall": recall.item(),
                     "f1_score": f1_score.item(),
                 })
+                
+                # Append to existing metrics file if it exists, otherwise create new
+                metrics_file = os.path.join(output_dir, "individual_metrics.csv")
+                df = pd.DataFrame(image_metrics)
+                if os.path.exists(metrics_file):
+                    df.to_csv(metrics_file, mode='a', header=False, index=False)
+                else:
+                    df.to_csv(metrics_file, index=False)
 
-    # Calcular métricas agregadas
+
+    # Calcular métricas agregadas ignorando NaN o 'NA'
     test_loss_mean = test_loss / len(test_dataloader)
-    
+
+    def safe_mean(values):
+        # Convierte 'NA' a np.nan y filtra None
+        arr = np.array([
+            float(v) if v not in [None, 'NA', 'NaN', 'nan', ''] else np.nan
+            for v in values
+        ], dtype=np.float32)
+        return float(np.nanmean(arr)) if np.sum(~np.isnan(arr)) > 0 else 'NA'
+
     aggregate_metrics = {
         "test_loss": test_loss_mean,
-        "iou_score": np.mean([m["iou_score"] for m in image_metrics]),
-        "precision": np.mean([m["precision"] for m in image_metrics]),
-        "recall": np.mean([m["recall"] for m in image_metrics]),
-        "f1_score": np.mean([m["f1_score"] for m in image_metrics]),
+        "iou_score": safe_mean([m["iou_score"] for m in image_metrics]),
+        "precision": safe_mean([m["precision"] for m in image_metrics]),
+        "recall": safe_mean([m["recall"] for m in image_metrics]),
+        "f1_score": safe_mean([m["f1_score"] for m in image_metrics]),
     }
 
     # Guardar métricas
-    pd.DataFrame(image_metrics).to_csv(os.path.join(output_dir, "individual_metrics.csv"), index=False)
     pd.DataFrame([aggregate_metrics]).to_csv(os.path.join(output_dir, "aggregate_metrics.csv"), index=False)
 
     return aggregate_metrics
