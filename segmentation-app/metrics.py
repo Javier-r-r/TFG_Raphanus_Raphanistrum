@@ -135,7 +135,7 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
     mean_areole_size = np.mean(areole_areas) if areole_areas else 0
     
     # --- 4. Branching Angle (BA) ---
-    skeleton = skeletonize(binary_mask)
+    skeleton = skeletonize(binary_mask, method='zhang')
     G = nx.Graph()
     coords = np.column_stack(np.where(skeleton))
     
