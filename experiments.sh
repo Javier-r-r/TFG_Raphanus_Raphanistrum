@@ -97,22 +97,34 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
     for split_num in 1 2 3; do
         for exp_dir in $OUTPUT_DIR/$experiment_type/split$split_num/*/; do
             if [ -d "$exp_dir" ]; then
-                # Extraer metadatos del nombre del directorio
+                # Extraer metadatos del nombre del directorio de forma robusta
                 dirname=$(basename "$exp_dir")
+                # Contar partes
                 IFS='_' read -ra parts <<< "$dirname"
+                n=${#parts[@]}
 
                 if [ "$experiment_type" == "arquitectura" ]; then
+                    # Formato: encoder_arch_loss
                     encoder=${parts[0]}
                     arch=${parts[1]}
-                    loss=${parts[2]}
+                    # loss puede tener guiones bajos
+                    loss=$(IFS=_; echo "${parts[@]:2}")
                 elif [ "$experiment_type" == "encoders" ]; then
+                    # Formato: arch_encoder_loss (encoder puede tener guiones bajos)
                     arch=${parts[0]}
-                    encoder=${parts[1]}
-                    loss=${parts[2]}
+                    # encoder puede ser resnet34, resnet50, efficientnet-b0, mobilenet_v2
+                    if [ $n -eq 4 ]; then
+                        encoder="${parts[1]}_${parts[2]}"
+                        loss=${parts[3]}
+                    else
+                        encoder=${parts[1]}
+                        loss=$(IFS=_; echo "${parts[@]:2}")
+                    fi
                 else
+                    # Formato: arch_encoder_loss (loss puede tener guiones bajos)
                     arch=${parts[0]}
                     encoder=${parts[1]}
-                    loss=${parts[2]}
+                    loss=$(IFS=_; echo "${parts[@]:2}")
                 fi
 
                 # Inicializar variables
