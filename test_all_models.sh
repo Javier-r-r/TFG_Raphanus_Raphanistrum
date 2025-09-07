@@ -19,6 +19,16 @@ for split_num in 1 2 3; do
     python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
 done
 
+# Función para ejecutar test con log
+run_test() {
+    local cmd=$1
+    local log_file=$2
+    echo "Comando: $cmd" > "$log_file"
+    echo "Inicio: $(date)" >> "$log_file"
+    $cmd >> "$log_file" 2>&1
+    echo "Fin: $(date)" >> "$log_file"
+}
+
 # 1. Test de arquitecturas
 ENCODER="resnet34"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
@@ -30,7 +40,9 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ENCODER}_${arch}_${LOSS}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            $BASE_CMD --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+            CMD="$BASE_CMD --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
+            LOG_FILE="$exp_dir/test.log"
+            run_test "$CMD" "$LOG_FILE"
         fi
     done
 done
@@ -46,7 +58,9 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ARCH}_${encoder}_${LOSS}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            $BASE_CMD --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+            CMD="$BASE_CMD --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
+            LOG_FILE="$exp_dir/test.log"
+            run_test "$CMD" "$LOG_FILE"
         fi
     done
 done
@@ -62,7 +76,9 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ARCH}_${ENCODER}_${loss}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            $BASE_CMD --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+            CMD="$BASE_CMD --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
+            LOG_FILE="$exp_dir/test.log"
+            run_test "$CMD" "$LOG_FILE"
         fi
     done
 done

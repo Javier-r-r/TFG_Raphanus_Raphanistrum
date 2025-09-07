@@ -28,7 +28,6 @@ run_experiment() {
     echo "Fin: $(date)" >> "$log_file"
 }
 
-
 # 1. Experimentos variando arquitecturas (encoder fijo: resnet34, loss por defecto: bce_dice)
 ENCODER="resnet34"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
