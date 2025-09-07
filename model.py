@@ -653,6 +653,8 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
     # Calcular métricas agregadas ignorando NaN o 'NA'
     test_loss_mean = test_loss / len(test_dataloader)
 
+    print(f"Average Test Loss: {test_loss_mean:.4f}")
+
     def safe_mean(values):
         # Convierte 'NA' a np.nan y filtra None
         arr = np.array([
