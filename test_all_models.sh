@@ -4,6 +4,14 @@
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
 
+# Generar splits reproducibles 70/15/15 usando database_segmentation.py
+echo "Generando splits reproducibles 70/15/15..."
+for split_num in 1 2 3; do
+    split_dir="$SPLIT_ROOT/split$split_num"
+    mkdir -p $split_dir
+    python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
+done
+
 # 1. Test de arquitecturas
 ENCODER="resnet34"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
