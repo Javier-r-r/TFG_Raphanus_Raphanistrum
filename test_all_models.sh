@@ -39,10 +39,13 @@ for split_num in 1 2 3; do
     split="$WEIGHTS_DIR/arquitectura/split${split_num}"
     for arch in "${ARCHITECTURES[@]}"; do
         exp_dir="$split/${ENCODER}_${arch}_${LOSS}"
-        if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
-            echo "Evaluando test para $exp_dir"
-            LOG_FILE="$exp_dir/test.log"
-            run_test "$LOG_FILE" python model.py --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+        weights_path="$exp_dir/best_model.pth"
+        exp_test_dir="$OUTPUT_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS}"
+        if [ -f "$weights_path" ]; then
+            mkdir -p "$exp_test_dir"
+            echo "Evaluando test para $exp_test_dir"
+            LOG_FILE="$exp_test_dir/test.log"
+            run_test "$LOG_FILE" python model.py --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_test_dir --data_split $split --weights $weights_path
         fi
     done
 done
@@ -56,10 +59,13 @@ for split_num in 1 2 3; do
     split="$WEIGHTS_DIR/encoders/split${split_num}"
     for encoder in "${ENCODERS[@]}"; do
         exp_dir="$split/${ARCH}_${encoder}_${LOSS}"
-        if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
-            echo "Evaluando test para $exp_dir"
-            LOG_FILE="$exp_dir/test.log"
-            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+        weights_path="$exp_dir/best_model.pth"
+        exp_test_dir="$OUTPUT_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS}"
+        if [ -f "$weights_path" ]; then
+            mkdir -p "$exp_test_dir"
+            echo "Evaluando test para $exp_test_dir"
+            LOG_FILE="$exp_test_dir/test.log"
+            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_test_dir --data_split $split --weights $weights_path
         fi
     done
 done
@@ -73,10 +79,13 @@ for split_num in 1 2 3; do
     split="$WEIGHTS_DIR/loss/split${split_num}"
     for loss in "${LOSSES[@]}"; do
         exp_dir="$split/${ARCH}_${ENCODER}_${loss}"
-        if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
-            echo "Evaluando test para $exp_dir"
-            LOG_FILE="$exp_dir/test.log"
-            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
+        weights_path="$exp_dir/best_model.pth"
+        exp_test_dir="$OUTPUT_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss}"
+        if [ -f "$weights_path" ]; then
+            mkdir -p "$exp_test_dir"
+            echo "Evaluando test para $exp_test_dir"
+            LOG_FILE="$exp_test_dir/test.log"
+            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_test_dir --data_split $split --weights $weights_path
         fi
     done
 done
