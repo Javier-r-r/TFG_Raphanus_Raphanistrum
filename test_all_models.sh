@@ -91,3 +91,57 @@ for split_num in 1 2 3; do
 done
 
 echo "Evaluación de test completada para todos los modelos."
+
+# === Generar resumen de resultados de test ===
+SUMMARY_FILE="$OUTPUT_DIR/test_summary.csv"
+echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,model_path" > "$SUMMARY_FILE"
+
+for experiment_type in "arquitectura" "encoders" "loss"; do
+    for split_num in 1 2 3; do
+        for exp_dir in $OUTPUT_DIR/$experiment_type/split$split_num/*/; do
+            if [ -d "$exp_dir" ]; then
+                dirname=$(basename "$exp_dir")
+                IFS='_' read -ra parts <<< "$dirname"
+                n=${#parts[@]}
+
+                if [ "$experiment_type" == "arquitectura" ]; then
+                    encoder=${parts[0]}
+                    arch=${parts[1]}
+                    loss=$(IFS=_; echo "${parts[@]:2}")
+                elif [ "$experiment_type" == "encoders" ]; then
+                    arch=${parts[0]}
+                    if [ $n -eq 4 ]; then
+                        encoder="${parts[1]}_${parts[2]}"
+                        loss=${parts[3]}
+                    else
+                        encoder=${parts[1]}
+                        loss=$(IFS=_; echo "${parts[@]:2}")
+                    fi
+                else
+                    arch=${parts[0]}
+                    encoder=${parts[1]}
+                    loss=$(IFS=_; echo "${parts[@]:2}")
+                fi
+
+                test_loss="NA"
+                iou_score="NA"
+                precision="NA"
+                recall="NA"
+                f1_score="NA"
+
+                if [ -f "$exp_dir/metricas_detalladas.csv" ]; then
+                    metrics=$(tail -n 1 "$exp_dir/metricas_detalladas.csv")
+                    test_loss=$(echo "$metrics" | cut -d',' -f1)
+                    iou_score=$(echo "$metrics" | cut -d',' -f2)
+                    precision=$(echo "$metrics" | cut -d',' -f3)
+                    recall=$(echo "$metrics" | cut -d',' -f4)
+                    f1_score=$(echo "$metrics" | cut -d',' -f5)
+                fi
+
+                echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$exp_dir" >> "$SUMMARY_FILE"
+            fi
+        done
+    done
+done
+
+echo "Resumen de test guardado en: $SUMMARY_FILE"
