@@ -753,8 +753,10 @@ def main():
 		    device
 		)
 		# Guardar métricas en CSV
+		logging.info(f"Guardando métricas en {output_dir}/metricas_detalladas.csv")
 		df_metrics = pd.DataFrame([metrics])
 		df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
+		logging.info("Test finalizado correctamente.")
 		return
 
 	# Crear datasets

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 # Script para evaluar todos los modelos entrenados usando los pesos guardados en experiment_results
 
 BASE_CMD="python model.py"
@@ -19,13 +20,13 @@ for split_num in 1 2 3; do
     python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
 done
 
-# Función para ejecutar test con log
+# Función para ejecutar test con log (más robusta)
 run_test() {
-    local cmd=$1
-    local log_file=$2
-    echo "Comando: $cmd" > "$log_file"
+    local log_file=$1
+    shift
+    echo "Comando: $*" > "$log_file"
     echo "Inicio: $(date)" >> "$log_file"
-    $cmd >> "$log_file" 2>&1
+    "$@" >> "$log_file" 2>&1
     echo "Fin: $(date)" >> "$log_file"
 }
 
@@ -40,9 +41,8 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ENCODER}_${arch}_${LOSS}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            CMD="$BASE_CMD --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
             LOG_FILE="$exp_dir/test.log"
-            run_test "$CMD" "$LOG_FILE"
+            run_test "$LOG_FILE" python model.py --test_only --arch $arch --encoder_name $ENCODER --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
         fi
     done
 done
@@ -58,9 +58,8 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ARCH}_${encoder}_${LOSS}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            CMD="$BASE_CMD --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
             LOG_FILE="$exp_dir/test.log"
-            run_test "$CMD" "$LOG_FILE"
+            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $encoder --loss_fn $LOSS --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
         fi
     done
 done
@@ -76,9 +75,8 @@ for split_num in 1 2 3; do
         exp_dir="$split/${ARCH}_${ENCODER}_${loss}"
         if [ -d "$exp_dir" ] && [ -f "$exp_dir/best_model.pth" ]; then
             echo "Evaluando test para $exp_dir"
-            CMD="$BASE_CMD --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth"
             LOG_FILE="$exp_dir/test.log"
-            run_test "$CMD" "$LOG_FILE"
+            run_test "$LOG_FILE" python model.py --test_only --arch $ARCH --encoder_name $ENCODER --loss_fn $loss --output_dir $exp_dir --data_split $split --weights $exp_dir/best_model.pth
         fi
     done
 done
