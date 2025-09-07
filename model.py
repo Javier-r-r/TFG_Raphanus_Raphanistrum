@@ -97,6 +97,8 @@ def parse_args():
                         help='Nombre del directorio donde almacenar los resultados')
     parser.add_argument('--data_split', type=str, default='../experiments/experiment_70_15_15',
                       help='Ruta a la división del dataset a usar')
+    parser.add_argument('--test_only', action='store_true', help='Solo ejecutar test, no entrenar')
+    parser.add_argument('--weights', type=str, default=None, help='Ruta a los pesos del modelo para test')
     return parser.parse_args()
 
 # ----------------------------
@@ -710,6 +712,52 @@ def main():
 	test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
 
 	# Crear datasets
+	test_dataset = PetalVeinDataset(
+		images_dir=test_images_dir,
+		masks_dir=test_masks_dir,
+		input_image_reshape=input_image_reshape,
+		augmentation=augmentation_val_test,
+		normalize=True,
+	)
+
+	pin_memory = True if device == "cuda" else False
+	test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
+
+	# Si solo se quiere testear
+	if args.test_only:
+		# Configura la función de pérdida según el nombre
+		if args.loss_fn.lower() == 'bce':
+			loss_fn = smp.losses.SoftBCEWithLogitsLoss()
+		elif args.loss_fn.lower() == 'focal':
+			loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
+		elif args.loss_fn.lower() == 'dice':
+			loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+		elif args.loss_fn.lower() == 'bce_dice':
+			loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
+		else:
+			loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
+
+		# Crear modelo y cargar pesos
+		model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
+		if args.weights is not None and os.path.isfile(args.weights):
+			model.load_state_dict(torch.load(args.weights, map_location=device))
+			logging.info(f"Pesos cargados desde {args.weights}")
+		else:
+			logging.warning("No se especificó un archivo de pesos válido para test_only. Se usarán pesos aleatorios.")
+
+		metrics = test_model(
+			model, 
+			args.output_dir, 
+			test_loader, 
+		    loss_fn, 
+		    device
+		)
+		# Guardar métricas en CSV
+		df_metrics = pd.DataFrame([metrics])
+		df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
+		return
+
+	# Crear datasets
 	train_dataset = PetalVeinDataset(
 		images_dir=train_images_dir,
 		masks_dir=train_masks_dir,
@@ -720,13 +768,6 @@ def main():
 	val_dataset = PetalVeinDataset(
 		images_dir=val_images_dir,
 		masks_dir=val_masks_dir,
-		input_image_reshape=input_image_reshape,
-		augmentation=augmentation_val_test,
-		normalize=True,
-	)
-	test_dataset = PetalVeinDataset(
-		images_dir=test_images_dir,
-		masks_dir=test_masks_dir,
 		input_image_reshape=input_image_reshape,
 		augmentation=augmentation_val_test,
 		normalize=True,
