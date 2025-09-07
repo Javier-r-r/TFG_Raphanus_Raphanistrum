@@ -30,6 +30,19 @@ from theme import create_theme
 from metrics import compute_normalized_metrics
 from metrics import generate_petal_mask_from_rgb
 
+import unicodedata
+import re
+
+
+def normalize_filename(filename: str) -> str:
+    """Normaliza nombres de archivo/ruta para evitar problemas con caracteres especiales."""
+    # Normaliza a NFKD y elimina diacríticos
+    nfkd = unicodedata.normalize('NFKD', filename)
+    ascii_str = nfkd.encode('ASCII', 'ignore').decode('ASCII')
+    # Reemplaza caracteres no válidos por guion bajo
+    ascii_str = re.sub(r'[^\w\-.]', '_', ascii_str)
+    return ascii_str
+
 
 class SegTkApp:
     """Main segmentation inference application."""
@@ -621,8 +634,10 @@ class SegTkApp:
         if not path:
             return
         try:
-            cv2.imwrite(path, self.last_mask)
-            self._show_notification("Save Mask", f"Saved: {path}")
+            # Normaliza la ruta antes de guardar
+            norm_path = normalize_filename(path)
+            cv2.imwrite(norm_path, self.last_mask)
+            self._show_notification("Save Mask", f"Saved: {norm_path}")
         except Exception as e:
             messagebox.showerror("Save Mask", f"Failed to save mask:\n{e}")
 
@@ -635,9 +650,10 @@ class SegTkApp:
         if not path:
             return
         try:
+            norm_path = normalize_filename(path)
             bgr = cv2.cvtColor(self.last_overlay, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(path, bgr)
-            self._show_notification("Save Overlay", f"Saved: {path}")
+            cv2.imwrite(norm_path, bgr)
+            self._show_notification("Save Overlay", f"Saved: {norm_path}")
         except Exception as e:
             messagebox.showerror("Save Overlay", f"Failed to save overlay:\n{e}")
 
@@ -715,6 +731,7 @@ class SegTkApp:
             return
         
         try:
+            norm_path = normalize_filename(path)
             # Add timestamp and image info to metrics
             metrics_with_info = {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -723,9 +740,9 @@ class SegTkApp:
             }
             
             # Check if file exists to determine if we need to write headers
-            file_exists = os.path.exists(path)
+            file_exists = os.path.exists(norm_path)
             
-            with open(path, 'a', newline='', encoding='utf-8') as csvfile:
+            with open(norm_path, 'a', newline='', encoding='utf-8') as csvfile:
                 fieldnames = list(metrics_with_info.keys())
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 
@@ -734,8 +751,8 @@ class SegTkApp:
                 
                 writer.writerow(metrics_with_info)
             
-            self._show_notification("Save Metrics", f"Metrics saved to: {path}")
-            self._write_debug(f"Metrics saved to CSV: {path}")
+            self._show_notification("Save Metrics", f"Metrics saved to: {norm_path}")
+            self._write_debug(f"Metrics saved to CSV: {norm_path}")
             
         except Exception as e:
             messagebox.showerror("Save Metrics", f"Failed to save metrics:\n{e}")
@@ -759,7 +776,8 @@ class SegTkApp:
         if not folder_path:
             return
         
-        # Find all image files
+        # Normaliza la ruta del folder
+        folder_path = normalize_filename(folder_path)
         folder = Path(folder_path)
         image_extensions = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp'}
         image_files = [f for f in folder.iterdir() if f.suffix.lower() in image_extensions and f.is_file()]
@@ -788,7 +806,8 @@ class SegTkApp:
         images_to_process = []
         skipped_count = 0
         for image_path in image_files:
-            mask_filename = f"{image_path.stem}_mask.png"
+            # Normaliza el nombre del archivo de máscara
+            mask_filename = normalize_filename(f"{image_path.stem}_mask.png")
             mask_path = results_folder / mask_filename
             
             # Skip if both mask exists AND image is in CSV
@@ -842,7 +861,7 @@ class SegTkApp:
                     mask = postprocess_mask(logits, thr, out_size=original_size)
                     
                     # Save mask
-                    mask_filename = f"{image_path.stem}_mask.png"
+                    mask_filename = normalize_filename(f"{image_path.stem}_mask.png")
                     mask_path = results_folder / mask_filename
                     cv2.imwrite(str(mask_path), mask)
                     
@@ -852,7 +871,7 @@ class SegTkApp:
                     
                     # Add to CSV data
                     row_data = {
-                        'image_name': image_path.name,
+                        'image_name': normalize_filename(image_path.name),
                         'mask_name': mask_filename,
                         'threshold': thr,
                         'image_size': f"{original_size[0]}x{original_size[1]}",
