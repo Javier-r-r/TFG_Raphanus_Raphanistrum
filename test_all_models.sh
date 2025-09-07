@@ -36,9 +36,9 @@ ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
 LOSS="bce_dice"
 
 for split_num in 1 2 3; do
-    split="$WEIGHTS_DIR/arquitectura/split${split_num}"
+    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
     for arch in "${ARCHITECTURES[@]}"; do
-        exp_dir="$split/${ENCODER}_${arch}_${LOSS}"
+        exp_dir="$WEIGHTS_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS}"
         weights_path="$exp_dir/best_model.pth"
         exp_test_dir="$OUTPUT_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS}"
         if [ -f "$weights_path" ]; then
@@ -56,9 +56,9 @@ ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
 LOSS="bce_dice"
 
 for split_num in 1 2 3; do
-    split="$WEIGHTS_DIR/encoders/split${split_num}"
+    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
     for encoder in "${ENCODERS[@]}"; do
-        exp_dir="$split/${ARCH}_${encoder}_${LOSS}"
+        exp_dir="$WEIGHTS_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS}"
         weights_path="$exp_dir/best_model.pth"
         exp_test_dir="$OUTPUT_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS}"
         if [ -f "$weights_path" ]; then
@@ -76,9 +76,9 @@ ENCODER="resnet34"
 LOSSES=("dice" "bce" "focal" "bce_dice")
 
 for split_num in 1 2 3; do
-    split="$WEIGHTS_DIR/loss/split${split_num}"
+    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
     for loss in "${LOSSES[@]}"; do
-        exp_dir="$split/${ARCH}_${ENCODER}_${loss}"
+        exp_dir="$WEIGHTS_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss}"
         weights_path="$exp_dir/best_model.pth"
         exp_test_dir="$OUTPUT_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss}"
         if [ -f "$weights_path" ]; then
