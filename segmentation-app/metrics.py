@@ -84,6 +84,53 @@ def count_main_veins(mask, min_length=30):
     
     return vein_count
 
+def compute_adjacent_vein_distances(skeleton, binary_mask, G, n_samples=200):
+    """
+    Calcula la distancia entre venas adyacentes usando la dirección perpendicular al esqueleto.
+    Solo toma puntos entre bifurcaciones (no extremos ni nodos de grado >=3).
+    """
+    coords = np.array([n for n in G.nodes if G.degree[n] == 2])  # puntos entre bifurcaciones
+    if len(coords) == 0:
+        return []
+
+    # Muestra aleatoria para eficiencia
+    if len(coords) > n_samples:
+        idx = np.random.choice(len(coords), n_samples, replace=False)
+        coords = coords[idx]
+
+    distances = []
+    for y, x in coords:
+        # Encuentra los dos vecinos para estimar la dirección local
+        neighbors = list(G.neighbors((y, x)))
+        if len(neighbors) != 2:
+            continue
+        (y1, x1), (y2, x2) = neighbors
+        # Vector tangente a la vena
+        dy = y2 - y1
+        dx = x2 - x1
+        norm = np.hypot(dy, dx)
+        if norm == 0:
+            continue
+        # Vector perpendicular (normalizado)
+        perp1 = (int(round(-dx / norm)), int(round(dy / norm)))
+        perp2 = (int(round(dx / norm)), int(round(-dy / norm)))
+
+        # Busca en ambas direcciones perpendiculares
+        min_dist = None
+        for perp in [perp1, perp2]:
+            for d in range(1, 50):  # Máximo 50 píxeles de búsqueda
+                yy = y + perp[1] * d
+                xx = x + perp[0] * d
+                if 0 <= yy < binary_mask.shape[0] and 0 <= xx < binary_mask.shape[1]:
+                    if binary_mask[yy, xx]:
+                        min_dist = d if (min_dist is None or d < min_dist) else min_dist
+                        break
+                else:
+                    break
+        if min_dist is not None:
+            distances.append(min_dist)
+    return distances
+
 def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rgb: np.ndarray = None) -> dict:
     """
     Compute vein network metrics. If petal_mask is provided, vein density is calculated
@@ -138,20 +185,16 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
     skeleton = skeletonize(binary_mask, method='zhang')
     G = nx.Graph()
     coords = np.column_stack(np.where(skeleton))
-    
-    # Build graph from skeleton
     for y, x in coords:
         G.add_node((y, x))
-    
-    # Connect adjacent pixels (8-connectivity)
     for y, x in coords:
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
                 if dy == 0 and dx == 0:
                     continue
-                ny, nx_coord = y + dy, x + dx  # <- Cambia 'nx' a 'nx_coord'
-                if (ny, nx_coord) in G.nodes:  # <- Usa 'nx_coord' aquí
-                    G.add_edge((y, x), (ny, nx_coord))  # <- Y aquí
+                ny, nx_coord = y + dy, x + dx
+                if (ny, nx_coord) in G.nodes:
+                    G.add_edge((y, x), (ny, nx_coord))
     
     # Detect junctions (nodes with degree >= 3)
     junctions = [node for node in G.nodes if G.degree[node] >= 3]
@@ -183,16 +226,10 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
     
     mean_branching_angle = np.mean(branching_angles) if branching_angles else 0
     
-    # --- 5. Vein-to-Vein Distance (VVD) ---
-    # Approximate by computing the distance between skeleton pixels
-    if len(coords) >= 2:
-        random_samples = min(1000, len(coords))  # Limit to 1000 random points for speed
-        sampled_coords = coords[np.random.choice(len(coords), random_samples, replace=False)]
-        pairwise_distances = distance.pdist(sampled_coords, 'euclidean')
-        mean_vvd = np.mean(pairwise_distances)
-    else:
-        mean_vvd = 0
-    
+    # --- 5. Vein-to-Vein Distance (VVD) mejorado ---
+    vvd_distances = compute_adjacent_vein_distances(skeleton, binary_mask, G)
+    mean_vvd = np.mean(vvd_distances) if vvd_distances else 0
+
     main_veins = count_main_veins(binary_mask, min_length=5)
 
     # --- Return Results ---
