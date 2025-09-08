@@ -166,13 +166,10 @@ class SegTkApp:
         self.model_info_label.pack(anchor="w")
         self.model_info_frame.grid_remove()  # Hide initially
 
-        # Arch/Encoder row
-        ttk.Label(card, text="Arch:", style="Muted.TLabel").grid(row=5, column=0, sticky="w", pady=(6, 2))
-        ttk.Entry(card, textvariable=self.arch_var, width=18).grid(row=5, column=1, sticky="w", padx=6, pady=(6, 2))
-        ttk.Label(card, text="Encoder:", style="Muted.TLabel").grid(row=5, column=2, sticky="e", pady=(6, 2))
-        ttk.Entry(card, textvariable=self.encoder_var, width=18).grid(row=5, column=3, sticky="w", padx=6, pady=(6, 2))
         ttk.Label(card, text="Default Resize (px):", style="Muted.TLabel").grid(row=5, column=4, sticky="e", pady=(6, 2))
-        ttk.Entry(card, textvariable=self.default_resize_var, width=10).grid(row=5, column=5, sticky="w", padx=4, pady=(6, 2))
+        resize_entry = ttk.Entry(card, textvariable=self.default_resize_var, width=10, state="readonly")
+        resize_entry.grid(row=5, column=5, sticky="w", padx=4, pady=(6, 2))
+        self.resize_entry = resize_entry
 
         # Actions row
         row = 6
@@ -413,6 +410,23 @@ class SegTkApp:
         """Unified notification method."""
         messagebox.showinfo(title, message)
 
+    def _show_busy_dialog(self, title="Segmenting", message="Segmenting image, please wait..."):
+        """Muestra un diálogo modal mientras se segmenta."""
+        self._hide_busy_dialog()  # Por si acaso
+        self._busy_dialog = tk.Toplevel(self.root)
+        self._busy_dialog.title(title)
+        self._busy_dialog.geometry("320x100")
+        self._busy_dialog.transient(self.root)
+        self._busy_dialog.grab_set()
+        ttk.Label(self._busy_dialog, text=message, anchor="center").pack(expand=True, fill="both", padx=20, pady=20)
+        self._busy_dialog.protocol("WM_DELETE_WINDOW", lambda: None)  # Evita cerrar
+
+    def _hide_busy_dialog(self):
+        if hasattr(self, "_busy_dialog") and self._busy_dialog.winfo_exists():
+            self._busy_dialog.grab_release()
+            self._busy_dialog.destroy()
+            del self._busy_dialog
+
     def _poll_task_queue(self):
         """Leer mensajes desde la cola de worker y actualizar UI."""
         try:
@@ -476,24 +490,28 @@ class SegTkApp:
 
     def _on_task_done(self, result):
         """Procesar resultado devuelto por el worker (ej.: actualizar previews)."""
+        self._hide_busy_dialog()  # Oculta el aviso de segmentación
         if not result:
             return
         if isinstance(result, dict) and "error" in result:
             self._write_debug(f"Worker error: {result['error']}")
             return
-        # Si el worker devuelve máscara y overlay actualiza UI
         if isinstance(result, dict) and "mask" in result:
             self.last_mask = result.get("mask")
             self.last_overlay = result.get("overlay")
             input_img = result.get("input_img")
-            # Actualiza vistas en hilo principal
             try:
-                if input_img is not None and hasattr(self, "_input_preview_label"):
-                    self._show_preview(Image.fromarray(input_img), self._input_preview_label)
-                if self.last_overlay is not None and hasattr(self, "_overlay_preview_label"):
-                    self._show_preview(Image.fromarray(self.last_overlay), self._overlay_preview_label)
-            except Exception:
-                pass
+                if input_img is not None and hasattr(self, "label_input"):
+                    self._show_preview(Image.fromarray(input_img), self.label_input)
+                if self.last_mask is not None and hasattr(self, "label_mask"):
+                    self._show_preview(Image.fromarray(self.last_mask), self.label_mask)
+                if self.last_overlay is not None and hasattr(self, "label_overlay"):
+                    self._show_preview(Image.fromarray(self.last_overlay), self.label_overlay)
+                # Selecciona la pestaña Overlay
+                if hasattr(self, "preview_nb"):
+                    self.preview_nb.select(2)
+            except Exception as e:
+                self._write_debug(f"Error updating previews: {e}")
 
     # -------- App actions --------
 
@@ -599,6 +617,9 @@ class SegTkApp:
 
     def on_segment(self, redraw_only: bool = False):
         """Lanza la inferencia en un thread para no bloquear la GUI."""
+        if not redraw_only:
+            self._show_busy_dialog("Segmenting", "Segmenting image, please wait...")
+
         def _segment_task(redraw_only):
             """Esta función se ejecuta en background — NUNCA tocar widgets aquí."""
             try:
@@ -925,3 +946,11 @@ class SegTkApp:
             self.model_info_frame.grid()
         else:
             self.model_info_frame.grid_remove()
+
+    def _show_preview(self, pil_img: Image.Image, label_widget, max_size=(1000, 600)):
+        """Muestra una imagen PIL en un widget Label de Tkinter."""
+        img = pil_img.copy()
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        label_widget.config(image=photo)
+        label_widget.image = photo  # Previene garbage collection

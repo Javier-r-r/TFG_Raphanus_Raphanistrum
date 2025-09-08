@@ -618,7 +618,9 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                 # Si quieres guardar también la imagen de entrada:
                 input_img = images[i].cpu().numpy().transpose(1, 2, 0)
                 input_img_path = os.path.join(output_dir, f"input_batch{batch_idx}_img{i}.png")
-                cv2.imwrite(input_img_path, (input_img * 255).astype(np.uint8))
+                # Convertir de RGB a BGR antes de guardar
+                input_img_bgr = cv2.cvtColor((input_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+                cv2.imwrite(input_img_path, input_img_bgr)
                 
                 # Calcular métricas
                 tp, fp, fn, tn = smp.metrics.get_stats(
