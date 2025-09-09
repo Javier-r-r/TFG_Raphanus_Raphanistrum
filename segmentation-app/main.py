@@ -750,31 +750,36 @@ class SegTkApp:
         )
         if not path:
             return
-        
+
         try:
-            norm_path = normalize_filename(path)
+            # Solo normaliza el nombre del archivo, no la ruta completa
+            folder = os.path.dirname(path)
+            base = os.path.basename(path)
+            norm_base = normalize_filename(base)
+            norm_path = os.path.join(folder, norm_base)
+
             # Add timestamp and image info to metrics
             metrics_with_info = {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "image_name": self.metrics_preview_title.cget("text"),
                 **self.current_metrics
             }
-            
+
             # Check if file exists to determine if we need to write headers
             file_exists = os.path.exists(norm_path)
-            
+
             with open(norm_path, 'a', newline='', encoding='utf-8') as csvfile:
                 fieldnames = list(metrics_with_info.keys())
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                
+
                 if not file_exists:
                     writer.writeheader()
-                
+
                 writer.writerow(metrics_with_info)
-            
+
             self._show_notification("Save Metrics", f"Metrics saved to: {norm_path}")
             self._write_debug(f"Metrics saved to CSV: {norm_path}")
-            
+
         except Exception as e:
             messagebox.showerror("Save Metrics", f"Failed to save metrics:\n{e}")
             self._write_debug(f"Error saving metrics: {e}")
