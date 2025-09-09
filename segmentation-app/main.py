@@ -801,21 +801,20 @@ class SegTkApp:
         folder_path = filedialog.askdirectory(title="Select folder with images to process")
         if not folder_path:
             return
-        
-        # Normaliza la ruta del folder
-        folder_path = normalize_filename(folder_path)
+
+        # Usa la ruta seleccionada tal cual (no normalizar la ruta completa)
         folder = Path(folder_path)
         image_extensions = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp'}
         image_files = [f for f in folder.iterdir() if f.suffix.lower() in image_extensions and f.is_file()]
-        
+
         if not image_files:
             messagebox.showwarning("No Images", "No supported image files found in the selected folder.")
             return
-        
+
         # Create results folder
         results_folder = folder / "results"
         results_folder.mkdir(exist_ok=True)
-        
+
         # Check for existing CSV to see what's already been processed
         csv_path = results_folder / "metrics_summary.csv"
         existing_processed = set()
@@ -827,7 +826,7 @@ class SegTkApp:
                 self._write_debug(f"Found existing metrics CSV with {len(existing_processed)} processed images")
             except Exception as e:
                 self._write_debug(f"Could not read existing CSV: {e}")
-        
+
         # Filter out already processed images
         images_to_process = []
         skipped_count = 0
@@ -835,7 +834,7 @@ class SegTkApp:
             # Normaliza el nombre del archivo de máscara
             mask_filename = normalize_filename(f"{image_path.stem}_mask.png")
             mask_path = results_folder / mask_filename
-            
+
             # Skip if both mask exists AND image is in CSV
             if mask_path.exists() and image_path.name in existing_processed:
                 skipped_count += 1
