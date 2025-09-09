@@ -524,60 +524,43 @@ class SegTkApp:
         if path:
             self.weights_path_var.set(path)
 
+
     def on_load_model(self):
-        """Load the segmentation model."""
-        path = self.weights_path_var.get().strip()
-        if not path or not os.path.exists(path):
-            messagebox.showerror("Error", "Please select a valid weights file (.pth)")
-            self._update_model_status("❌ Invalid path", "Muted.TLabel")
+        """Carga el modelo y los pesos, comprobando compatibilidad con config.json."""
+        weights_path = self.weights_path_var.get()
+        if not weights_path or not os.path.exists(weights_path):
+            self._show_notification("Error", "Please select a valid weights (.pth) file.")
             return
-
-        self._update_model_status("⏳ Loading...", "Muted.TLabel")
-        self.root.update()  # Force UI update
-
         try:
-            cfg = load_config_from_dir(path)
-            arch = cfg.get("arch") or cfg.get("arquitectura") or self.arch_var.get().strip() or "Unet"
-            enc = cfg.get("encoder_name") or self.encoder_var.get().strip() or "resnet34"
-            self.arch_var.set(arch)
-            self.encoder_var.set(enc)
-
-            self._write_debug(f"Loading model: arch={arch}, encoder={enc}")
-
-            model = CamVidModel(arch=arch, encoder_name=enc, in_channels=3, out_classes=1)
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model.to(device)
-
-            # Always use default stats
-            mean_src, std_src = model.set_stats(None, None, device)
-
-            state = torch.load(path, map_location=device)
-            load_res = model.load_state_dict(state, strict=False)
-            model.eval()
-
-            self.model = model
-            
-            device_name = "GPU (CUDA)" if device.type == "cuda" else "CPU"
-            # Only show arch, encoder, device, stats
-            model_info = f"Architecture: {arch} | Encoder: {enc} | Device: {device_name} | Stats: {mean_src}/{std_src}"
-            
-            self._update_model_status("✅ Loaded successfully", "Muted.TLabel", model_info)
-            
-            dbg = json.dumps({
-                "arch": arch,
-                "encoder_name": enc,
-                "used_mean_source": mean_src,
-                "used_std_source": std_src,
-                "missing_keys_count": len(load_res.missing_keys),
-                "unexpected_keys_count": len(load_res.unexpected_keys),
-            }, indent=2)
-            self._write_debug(dbg)
-            self._show_notification("Model", "Model loaded successfully.")
-            
+            # Cargar config.json asociado
+            cfg = load_config_from_dir(weights_path)
+            arch = cfg.get("arch", self.arch_var.get())
+            encoder = cfg.get("encoder", self.encoder_var.get())
+            in_channels = cfg.get("in_channels", 3)
+            out_classes = cfg.get("out_classes", 1)
+            # Crear modelo con la arquitectura/configuración del config.json
+            model = CamVidModel(arch, encoder, in_channels=in_channels, out_classes=out_classes)
+            # Intentar cargar los pesos
+            import torch
+            state = torch.load(weights_path, map_location=self.device)
+            try:
+                model.load_state_dict(state)
+            except Exception as e:
+                self._update_model_status("Error: pesos incompatibles", color_style="Error.TLabel")
+                self._write_debug(f"[ERROR] Los pesos no son compatibles con la arquitectura/encoder/configuración actual.\n{str(e)}")
+                self._show_notification("Error al cargar pesos", "Los pesos seleccionados no son compatibles con la arquitectura, encoder o configuración del modelo.\n\nDetalle: " + str(e))
+                return
+            self.model = model.to(self.device)
+            self._update_model_status("Modelo cargado", color_style="Success.TLabel")
+            self._write_debug(f"Modelo cargado correctamente: {arch} / {encoder}")
+            # Mostrar info de modelo
+            self.model_info_label.config(text=f"Arch: {arch}, Encoder: {encoder}, InCh: {in_channels}, OutCl: {out_classes}")
+            self.model_info_frame.grid()  # Mostrar info
         except Exception as e:
-            self._update_model_status("❌ Load failed", "Muted.TLabel", f"Error: {str(e)}")
-            self._write_debug(f"Model loading failed: {e}")
-            messagebox.showerror("Model Error", f"Failed to load model:\n{e}")
+            self._update_model_status("Error al cargar modelo", color_style="Error.TLabel")
+            self._write_debug(f"[ERROR] No se pudo cargar el modelo: {str(e)}")
+            self._show_notification("Error al cargar modelo", str(e))
+        return
 
     def on_open_image(self):
         """Open an image for segmentation."""
