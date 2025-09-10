@@ -3,6 +3,7 @@ import numpy as np
 import os
 from glob import glob
 
+
 def generate_petal_mask_from_rgb(img_rgb: np.ndarray) -> np.ndarray:
     """
     Generate a petal mask from an RGB image using HSV color thresholding.

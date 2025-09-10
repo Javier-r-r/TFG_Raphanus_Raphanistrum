@@ -173,11 +173,36 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
     inverted_mask = ~binary_mask
     labeled_areoles = label(inverted_mask, connectivity=1)  # 4-connectivity to avoid diagonal links
     regions = regionprops(labeled_areoles)
-    
+
     # Filter small noisy regions (optional, adjust min_size as needed)
     min_areole_size = 10  # pixels
-    areole_areas = [r.area for r in regions if r.area >= min_areole_size]
-    
+
+    # --- Lógica para filtrar areolas internas (sin fondo ni borde) ---
+    h, w = mask.shape[:2]
+    def touches_border(region):
+        y, x = region.coords[:, 0], region.coords[:, 1]
+        return np.any(y == 0) or np.any(y == h-1) or np.any(x == 0) or np.any(x == w-1)
+
+    valid_regions = [r for r in regions if r.area >= min_areole_size and not touches_border(r)]
+    if valid_regions:
+        all_valid = [r for r in regions if r.area >= min_areole_size]
+        if all_valid:
+            largest_region = max(all_valid, key=lambda r: r.area)
+        else:
+            largest_region = None
+    # Calcular áreas de areolas igual que en la visualización (sin fondo ni borde)
+    areole_areas = []
+    if valid_regions:
+        # Encontrar la región más grande (fondo) entre todas las regiones
+        all_valid = [r for r in regions if r.area >= min_areole_size]
+        if all_valid:
+            largest_region = max(all_valid, key=lambda r: r.area)
+        else:
+            largest_region = None
+        for r in valid_regions:
+            if r is largest_region:
+                continue
+            areole_areas.append(r.area)
     num_areoles = len(areole_areas)
     mean_areole_size = np.mean(areole_areas) if areole_areas else 0
     

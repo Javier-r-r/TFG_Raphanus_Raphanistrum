@@ -140,7 +140,7 @@ class SegTkApp:
 
         # Title + description
         ttk.Label(card, text="Input", style="CardTitle.TLabel").grid(row=0, column=0, columnspan=6, sticky="w")
-        ttk.Label(card, text="Select model weights and an image, set threshold and alpha, then run segmentation.",
+        ttk.Label(card, text="Select model weights and an image, set architecture, encoder, loss, threshold and alpha, then run segmentation.",
                   style="CardDesc.TLabel").grid(row=1, column=0, columnspan=6, sticky="w", pady=(2, 10))
 
         # Weights row
@@ -150,29 +150,47 @@ class SegTkApp:
         ttk.Button(card, text="Browse", command=self.on_browse_weights, style="Secondary.TButton").grid(row=2, column=4, padx=4)
         ttk.Button(card, text="Load Model", command=self.on_load_model, style="Accent.TButton").grid(row=2, column=5, padx=2)
 
+        # Architecture, Encoder, Loss row
+        ttk.Label(card, text="Architecture:", style="Section.TLabel").grid(row=3, column=0, sticky="w", pady=2)
+        self.arch_var = tk.StringVar(value="Unet")
+        arch_options = ["Unet", "FPN", "PSPNet", "DeepLabV3"]
+        self.arch_combo = ttk.Combobox(card, textvariable=self.arch_var, values=arch_options, state="readonly", width=12)
+        self.arch_combo.grid(row=3, column=1, sticky="w", padx=2)
+
+        ttk.Label(card, text="Encoder:", style="Section.TLabel").grid(row=3, column=2, sticky="e", pady=2)
+        self.encoder_var = tk.StringVar(value="resnet34")
+        encoder_options = ["resnet34", "resnet50", "efficientnet-b0", "mobilenet_v2"]
+        self.encoder_combo = ttk.Combobox(card, textvariable=self.encoder_var, values=encoder_options, state="readonly", width=16)
+        self.encoder_combo.grid(row=3, column=3, sticky="w", padx=2)
+
+        ttk.Label(card, text="Loss:", style="Section.TLabel").grid(row=3, column=4, sticky="e", pady=2)
+        self.loss_var = tk.StringVar(value="dice")
+        loss_options = ["dice", "bce", "focal", "bce_dice"]
+        self.loss_combo = ttk.Combobox(card, textvariable=self.loss_var, values=loss_options, state="readonly", width=10)
+        self.loss_combo.grid(row=3, column=5, sticky="w", padx=2)
+
         # Model status indicator row
         status_frame = ttk.Frame(card)
-        status_frame.grid(row=3, column=0, columnspan=6, sticky="we", pady=(4, 2))
+        status_frame.grid(row=4, column=0, columnspan=6, sticky="we", pady=(4, 2))
         status_frame.columnconfigure(1, weight=1)
-        
         ttk.Label(status_frame, text="Model Status:", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
         self.model_status_label = ttk.Label(status_frame, text="Not loaded", style="Muted.TLabel")
         self.model_status_label.grid(row=0, column=1, sticky="w", padx=(8, 0))
-        
+
         # Model info display (initially hidden)
         self.model_info_frame = ttk.Frame(card)
-        self.model_info_frame.grid(row=4, column=0, columnspan=6, sticky="we", pady=(2, 6))
+        self.model_info_frame.grid(row=5, column=0, columnspan=6, sticky="we", pady=(2, 6))
         self.model_info_label = ttk.Label(self.model_info_frame, text="", style="Muted.TLabel", wraplength=600)
         self.model_info_label.pack(anchor="w")
         self.model_info_frame.grid_remove()  # Hide initially
 
-        ttk.Label(card, text="Default Resize (px):", style="Muted.TLabel").grid(row=5, column=4, sticky="e", pady=(6, 2))
+        ttk.Label(card, text="Default Resize (px):", style="Muted.TLabel").grid(row=6, column=4, sticky="e", pady=(6, 2))
         resize_entry = ttk.Entry(card, textvariable=self.default_resize_var, width=10, state="readonly")
-        resize_entry.grid(row=5, column=5, sticky="w", padx=4, pady=(6, 2))
+        resize_entry.grid(row=6, column=5, sticky="w", padx=4, pady=(6, 2))
         self.resize_entry = resize_entry
 
         # Actions row
-        row = 6
+        row = 7
         actions = ttk.Frame(card, style="Card.TFrame")
         actions.grid(row=row, column=0, columnspan=6, sticky="we", pady=(8, 2))
         ttk.Button(actions, text="Open Image", command=self.on_open_image, style="Secondary.TButton").pack(side=tk.LEFT, padx=(0, 6))
@@ -526,25 +544,56 @@ class SegTkApp:
 
 
     def on_load_model(self):
-        """Carga el modelo y los pesos, comprobando compatibilidad con config.json."""
+        """Carga el modelo y los pesos, comprobando compatibilidad de arquitectura, encoder y función de loss con config.json."""
         weights_path = self.weights_path_var.get()
         if not weights_path or not os.path.exists(weights_path):
             self._show_notification("Error", "Please select a valid weights (.pth) file.")
             return
         try:
-            # Cargar config.json asociado
             cfg = load_config_from_dir(weights_path)
-            arch = cfg.get("arch", self.arch_var.get())
-            encoder = cfg.get("encoder", self.encoder_var.get())
+            arch_cfg = cfg.get("arch")
+            encoder_cfg = cfg.get("encoder") or cfg.get("encoder_name")
+            loss_cfg = cfg.get("loss") or cfg.get("loss_fn")
+            arch_ui = self.arch_var.get()
+            encoder_ui = self.encoder_var.get()
+            loss_ui = self.loss_var.get()
+            compatible = True
+            msg = ""
+            if arch_cfg and arch_cfg != arch_ui:
+                compatible = False
+                msg += f"\n- Architecture mismatch: config={arch_cfg}, selected={arch_ui}"
+            if encoder_cfg and encoder_cfg != encoder_ui:
+                compatible = False
+                msg += f"\n- Encoder mismatch: config={encoder_cfg}, selected={encoder_ui}"
+            if loss_cfg and loss_cfg != loss_ui:
+                compatible = False
+                msg += f"\n- Loss mismatch: config={loss_cfg}, selected={loss_ui}"
+            if not compatible:
+                self._show_notification("Incompatible weights/config", f"The selected weights are not compatible with the current settings:{msg}")
+                self._update_model_status("Incompatible", color_style="Error.TLabel", info=msg)
+                return
             in_channels = cfg.get("in_channels", 3)
             out_classes = cfg.get("out_classes", 1)
-            # Crear modelo con la arquitectura/configuración del config.json
-            model = CamVidModel(arch, encoder, in_channels=in_channels, out_classes=out_classes)
-            # Intentar cargar los pesos
+            model = CamVidModel(arch_ui, encoder_ui, in_channels=in_channels, out_classes=out_classes)
             import torch
             state = torch.load(weights_path, map_location=self.device)
             try:
-                model.load_state_dict(state)
+                result = model.load_state_dict(state, strict=False)
+                missing = set(result.missing_keys)
+                unexpected = set(result.unexpected_keys)
+                ignorable = {"mean", "std", "mean", "std"}
+                # Si solo faltan/son inesperadas mean y std, mostrar warning pero continuar
+                if (missing - ignorable or unexpected - ignorable):
+                    # Hay otras claves importantes faltantes o inesperadas
+                    msg = f"Missing keys: {missing}\nUnexpected keys: {unexpected}"
+                    self._update_model_status("Error: pesos incompatibles", color_style="Error.TLabel")
+                    self._write_debug(f"[ERROR] Los pesos no son compatibles con la arquitectura/encoder/configuración actual.\n{msg}")
+                    self._show_notification("Error al cargar pesos", "Los pesos seleccionados no son compatibles con la arquitectura, encoder o configuración del modelo.\n\nDetalle: " + msg)
+                    return
+                elif missing or unexpected:
+                    # Solo faltan/son inesperadas mean y std
+                    msg = f"Advertencia: faltan o sobran claves no críticas (mean/std). El modelo se ha cargado igualmente.\nMissing: {missing}\nUnexpected: {unexpected}"
+                    self._write_debug(msg)
             except Exception as e:
                 self._update_model_status("Error: pesos incompatibles", color_style="Error.TLabel")
                 self._write_debug(f"[ERROR] Los pesos no son compatibles con la arquitectura/encoder/configuración actual.\n{str(e)}")
@@ -552,9 +601,9 @@ class SegTkApp:
                 return
             self.model = model.to(self.device)
             self._update_model_status("Modelo cargado", color_style="Success.TLabel")
-            self._write_debug(f"Modelo cargado correctamente: {arch} / {encoder}")
+            self._write_debug(f"Modelo cargado correctamente: {arch_ui} / {encoder_ui} / {loss_ui}")
             # Mostrar info de modelo
-            self.model_info_label.config(text=f"Arch: {arch}, Encoder: {encoder}, InCh: {in_channels}, OutCl: {out_classes}")
+            self.model_info_label.config(text=f"Arch: {arch_ui}, Encoder: {encoder_ui}, Loss: {loss_ui}, InCh: {in_channels}, OutCl: {out_classes}")
             self.model_info_frame.grid()  # Mostrar info
         except Exception as e:
             self._update_model_status("Error al cargar modelo", color_style="Error.TLabel")
@@ -667,13 +716,9 @@ class SegTkApp:
             messagebox.showwarning("Metrics", "No predicted mask. Run segmentation first.")
             return
         try:
-            # Preview: predicted mask
             pil_mask = Image.fromarray(self.last_mask if self.last_mask.ndim == 2 else cv2.cvtColor(self.last_mask, cv2.COLOR_BGR2GRAY))
             self._set_metrics_preview(pil_mask, "Predicted mask")
-
-            # Compute metrics
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
-            # Generate petal mask from input image if available, and add vein mask
             petal_mask = None
             img_rgb = self.np_input_rgb if self.np_input_rgb is not None else None
             res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb)
@@ -694,12 +739,8 @@ class SegTkApp:
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if img is None:
                 raise RuntimeError("Unable to read mask file")
-
-            # Preview: file mask
             pil = Image.fromarray(img)
             self._set_metrics_preview(pil, f"File: {os.path.basename(path)}")
-
-            # Ask user if they want to provide a petal mask
             use_petal_mask = messagebox.askyesno("Petal Mask", "Provide the original image to calculate petal masks")
             petal_mask = None
             if use_petal_mask:
@@ -711,8 +752,6 @@ class SegTkApp:
                     petal_img = cv2.imread(petal_path, cv2.IMREAD_GRAYSCALE)
                     if petal_img is not None:
                         petal_mask = (petal_img >= 128).astype(np.uint8)
-
-            # Compute metrics
             mask_bin = (img >= 128).astype(np.uint8)
             res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask)
             self.current_metrics = res
@@ -725,7 +764,6 @@ class SegTkApp:
         if not self.current_metrics:
             messagebox.showwarning("Save Metrics", "No metrics to save. Compute metrics first.")
             return
-        
         path = filedialog.asksaveasfilename(
             title="Save Metrics to CSV",
             defaultextension=".csv",
@@ -733,47 +771,52 @@ class SegTkApp:
         )
         if not path:
             return
-
         try:
-            # Solo normaliza el nombre del archivo, no la ruta completa
             folder = os.path.dirname(path)
             base = os.path.basename(path)
             norm_base = normalize_filename(base)
             norm_path = os.path.join(folder, norm_base)
-
-            # Add timestamp and image info to metrics
-            metrics_with_info = {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "image_name": self.metrics_preview_title.cget("text"),
-                **self.current_metrics
-            }
-
-            # Check if file exists to determine if we need to write headers
+            # Si las métricas son una lista (por pétalo), guardar cada una
+            metrics_list = self.current_metrics if isinstance(self.current_metrics, list) else [self.current_metrics]
             file_exists = os.path.exists(norm_path)
-
             with open(norm_path, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = list(metrics_with_info.keys())
+                # Unir todos los campos posibles
+                all_fields = set()
+                for m in metrics_list:
+                    all_fields.update(m.keys())
+                all_fields.update(["timestamp", "image_name"])
+                fieldnames = list(all_fields)
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
                 if not file_exists:
                     writer.writeheader()
-
-                writer.writerow(metrics_with_info)
-
+                for m in metrics_list:
+                    row = {**m}
+                    row["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    row["image_name"] = self.metrics_preview_title.cget("text")
+                    writer.writerow(row)
             self._show_notification("Save Metrics", f"Metrics saved to: {norm_path}")
             self._write_debug(f"Metrics saved to CSV: {norm_path}")
-
         except Exception as e:
             messagebox.showerror("Save Metrics", f"Failed to save metrics:\n{e}")
             self._write_debug(f"Error saving metrics: {e}")
 
-    def _show_metrics(self, res: Dict[str, Any]):
-        """Display metrics in the tree view."""
+    def _show_metrics(self, res):
+        """Display metrics in the tree view. Soporta lista de métricas por pétalo."""
         for child in self.metrics_tree.get_children():
             self.metrics_tree.delete(child)
-        for k, v in res.items():
-            disp = f"{v:.2f}" if isinstance(v, float) else str(v)
-            self.metrics_tree.insert("", tk.END, values=(k, disp))
+        if isinstance(res, list):
+            for m in res:
+                label = m.get("petal_label", "?")
+                self.metrics_tree.insert("", tk.END, values=(f"--- Petalo {label} ---", ""))
+                for k, v in m.items():
+                    if k == "petal_label":
+                        continue
+                    disp = f"{v:.2f}" if isinstance(v, float) else str(v)
+                    self.metrics_tree.insert("", tk.END, values=(k, disp))
+        else:
+            for k, v in res.items():
+                disp = f"{v:.2f}" if isinstance(v, float) else str(v)
+                self.metrics_tree.insert("", tk.END, values=(k, disp))
 
     def on_batch_process(self):
         """Process all images in a selected folder."""
@@ -875,7 +918,7 @@ class SegTkApp:
                     
                     # Compute metrics
                     mask_bin = (mask >= 128).astype(np.uint8)
-                    metrics = compute_normalized_metrics(mask_bin)
+                    metrics = compute_normalized_metrics(mask_bin, img_rgb=img_rgb)
                     
                     # Add to CSV data
                     row_data = {
