@@ -4,9 +4,8 @@ import os
 import subprocess
 import queue
 import os
-from typing import Callable, Any, Tuple, Dict
 
-
+from typing import Callable, Tuple, Dict
 
 # --- ThreadPoolExecutor global para limitar hilos ---
 _CPU_COUNT = os.cpu_count() or 2

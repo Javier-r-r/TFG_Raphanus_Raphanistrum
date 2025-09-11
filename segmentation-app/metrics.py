@@ -1,12 +1,12 @@
 import numpy as np
-from skimage.morphology import skeletonize, remove_small_objects
+import networkx as nx
+
+from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from scipy.ndimage import distance_transform_edt
-from scipy.spatial import distance
-import networkx as nx
 from math import atan2, degrees
-import cv2
 from petals_generator import generate_petal_mask_from_rgb
+
 
 def compute_normalized_metrics(mask, petal_mask=None, img_rgb=None, reference_resolution=1000):
     # Calcular métricas originales
@@ -23,8 +23,6 @@ def compute_normalized_metrics(mask, petal_mask=None, img_rgb=None, reference_re
     results["Vein-to-Vein Distance (VVD)"] *= scale_factor
     
     return results
-
-from skimage.graph import route_through_array
 
 def count_main_veins(mask, min_length=30):
     """

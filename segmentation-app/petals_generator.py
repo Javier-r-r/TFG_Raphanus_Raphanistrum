@@ -1,8 +1,5 @@
 import cv2
 import numpy as np
-import os
-from glob import glob
-
 
 def generate_petal_mask_from_rgb(img_rgb: np.ndarray) -> np.ndarray:
     """

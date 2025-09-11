@@ -3,14 +3,13 @@ Model classes and utilities for segmentation inference.
 """
 import os
 import json
-from typing import Optional, Tuple, Any, Dict
-
 import numpy as np
 import cv2
-from PIL import Image
-
 import torch
 import segmentation_models_pytorch as smp
+
+from PIL import Image
+from typing import Optional, Tuple, Any, Dict
 
 
 class CamVidModel(torch.nn.Module):

@@ -2,36 +2,26 @@
 Main application class for the segmentation inference GUI.
 """
 import os
-import json
 import csv
-from typing import Optional, Dict, Any
-from pathlib import Path
-from datetime import datetime
-
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-
-# Added missing PIL imports used throughout the module (Image, ImageTk)
-from PIL import Image, ImageTk
-
-import threading
+import unicodedata
+import re
 import queue
 import numpy as np
 import torch
 from background_worker import run_callable_in_thread
-
-# Añadir OpenCV
 import cv2
+import tkinter as tk
 
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageTk
+from typing import Optional, Dict, Any
+from pathlib import Path
+from datetime import datetime
 from models import CamVidModel, load_config_from_dir
 from models import preprocess_image_pil, postprocess_mask, color_overlay
 from ui_components import ScrollableFrame
 from theme import create_theme
 from metrics import compute_normalized_metrics
-from metrics import generate_petal_mask_from_rgb
-
-import unicodedata
-import re
 
 
 def normalize_filename(filename: str) -> str:

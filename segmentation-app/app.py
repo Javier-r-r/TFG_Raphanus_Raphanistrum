@@ -2,8 +2,8 @@
 Entry point for the segmentation inference application.
 """
 import tkinter as tk
-from tkinter import ttk
 
+from tkinter import ttk
 from main import SegTkApp
 
 

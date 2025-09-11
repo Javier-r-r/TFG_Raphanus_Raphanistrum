@@ -2,6 +2,7 @@
 Custom UI components for the segmentation app.
 """
 import tkinter as tk
+
 from tkinter import ttk
 
 

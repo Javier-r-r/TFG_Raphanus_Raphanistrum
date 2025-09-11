@@ -3,7 +3,6 @@ Theme and styling configuration for the segmentation app.
 """
 from tkinter import ttk
 
-
 def create_theme(style: ttk.Style):
     """Create and apply custom theme inspired by modern web UI."""
     # Accent and neutrals inspired by the web UI
