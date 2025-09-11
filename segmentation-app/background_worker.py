@@ -7,6 +7,7 @@ import os
 
 from typing import Callable, Tuple, Dict
 
+
 # --- ThreadPoolExecutor global para limitar hilos ---
 _CPU_COUNT = os.cpu_count() or 2
 _MAX_WORKERS = max(1, _CPU_COUNT - 1)
