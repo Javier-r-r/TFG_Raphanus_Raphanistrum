@@ -3,8 +3,8 @@
 # Configuración básica
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
-DATASET_ORIG_IMAGES="../database_petals"
-DATASET_ORIG_MASKS="../masks_petals"
+DATASET_ORIG_IMAGES="../petalos_iguales"
+DATASET_ORIG_MASKS="../petalos_iguales_mascara"
 SPLIT_ROOT="split_temp"
 rm -rf $OUTPUT_DIR $SPLIT_ROOT
 mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}/{split1,split2,split3}
@@ -29,9 +29,9 @@ run_experiment() {
 }
 
 # 1. Experimentos variando arquitecturas (encoder fijo: resnet34, loss por defecto: bce_dice)
-ENCODER="resnet34"
+ENCODER="mobilenet_v2"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
-LOSS="bce_dice"
+LOSS="dice"
 
 echo "=== Ejecutando experimentos variando arquitecturas (encoder: $ENCODER, loss: $LOSS) ==="
 for split_num in 1 2 3; do
@@ -49,7 +49,7 @@ done
 # 2. Experimentos variando encoders (arquitectura fija: Unet, loss por defecto: bce_dice)
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
-LOSS="bce_dice"
+LOSS="dice"
 
 echo "=== Ejecutando experimentos variando encoders (arquitectura: $ARCH, loss: $LOSS) ==="
 for split_num in 1 2 3; do
@@ -66,7 +66,7 @@ done
 
 # 3. Experimentos variando funciones de pérdida (arquitectura: Unet, encoder: resnet34)
 ARCH="Unet"
-ENCODER="resnet34"
+ENCODER="mobilenet_v2"
 LOSSES=("dice" "bce" "focal" "bce_dice")
 
 echo "=== Ejecutando experimentos variando funciones de pérdida ==="

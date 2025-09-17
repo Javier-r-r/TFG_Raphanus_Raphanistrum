@@ -8,7 +8,7 @@ import shutil
 
 def cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras, tamaño=(128, 128)):
     """Carga imágenes y máscaras preservando la calidad original"""
-    imagenes = sorted(glob.glob(os.path.join(ruta_imagenes, "*.tif")))
+    imagenes = sorted(glob.glob(os.path.join(ruta_imagenes, "*.png")))
     mascaras = sorted(glob.glob(os.path.join(ruta_mascaras, "*.png")))
 
     if len(imagenes) != len(mascaras):
@@ -82,7 +82,7 @@ def generar_conjuntos_multiples(ruta_imagenes, ruta_mascaras, n_conjuntos=3):
 
 def generar_split_directorio(ruta_imagenes, ruta_mascaras, output_dir, seed=42, tamaño=(640, 640)):
     """Divide el dataset en 70/15/15 y guarda imágenes/máscaras en carpetas."""
-    imagenes = sorted(glob.glob(os.path.join(ruta_imagenes, "*.tif")))
+    imagenes = sorted(glob.glob(os.path.join(ruta_imagenes, "*.png")))
     mascaras = sorted(glob.glob(os.path.join(ruta_mascaras, "*.png")))
 
     if len(imagenes) != len(mascaras):

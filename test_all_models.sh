@@ -31,9 +31,9 @@ run_test() {
 }
 
 # 1. Test de arquitecturas
-ENCODER="resnet34"
+ENCODER="mobilenet_v2"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
-LOSS="bce_dice"
+LOSS="dice"
 
 for split_num in 1 2 3; do
     split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
@@ -53,7 +53,7 @@ done
 # 2. Test de encoders
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
-LOSS="bce_dice"
+LOSS="dice"
 
 for split_num in 1 2 3; do
     split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
@@ -72,7 +72,7 @@ done
 
 # 3. Test de funciones de pérdida
 ARCH="Unet"
-ENCODER="resnet34"
+ENCODER="mobilenet_v2"
 LOSSES=("dice" "bce" "focal" "bce_dice")
 
 for split_num in 1 2 3; do

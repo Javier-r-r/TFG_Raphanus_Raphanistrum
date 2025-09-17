@@ -9,10 +9,10 @@ from pathlib import Path
 LOWER_YELLOW = np.array([20, 80, 80])   # HSV lower bound para amarillo
 UPPER_YELLOW = np.array([40, 255, 255]) # HSV upper bound para amarillo
 
-input_folder = "segmentation-app/petalos"
-output_folder = "segmentation-app/petalos_recortados"
-mask_folder = "segmentation-app/masks"  # Cambia esta ruta si tus máscaras están en otra carpeta
-output_mask_folder = "segmentation-app/petalos_recortados_mascara"
+input_folder = "petalos"
+output_folder = "petalos_recortados"
+mask_folder = "masks"  # Cambia esta ruta si tus máscaras están en otra carpeta
+output_mask_folder = "petalos_recortados_mascara"
 os.makedirs(output_folder, exist_ok=True)
 os.makedirs(output_mask_folder, exist_ok=True)
 
