@@ -1,10 +1,10 @@
 import numpy as np
 import os
-from PIL import Image
 import glob
 from sklearn.model_selection import train_test_split
 import argparse
-import shutil
+
+from PIL import Image
 
 def cargar_imagenes_y_mascaras(ruta_imagenes, ruta_mascaras, tamaño=(128, 128)):
     """Carga imágenes y máscaras preservando la calidad original"""
