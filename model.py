@@ -124,21 +124,23 @@ class PetalVeinDataset(BaseDataset):
         augmentation=None,
         normalize=True
     ):
-        # Get all TIFF image files
-        self.ids = [f for f in os.listdir(images_dir) if f.lower().endswith('.tif')]
-        
+        # Get all image files (.tif and .png)
+        self.ids = [f for f in os.listdir(images_dir) if f.lower().endswith('.tif') or f.lower().endswith('.png')]
+
         # Validate that we found images
         if not self.ids:
-            raise ValueError(f"No TIFF images found in {images_dir}")
-        
+            raise ValueError(f"No TIFF or PNG images found in {images_dir}")
+
         # Create full paths for images and corresponding masks
         self.images_filepaths = [
             os.path.join(images_dir, img_id) for img_id in self.ids
         ]
-        
+
         # Masks are PNG files with same base name
         self.masks_filepaths = [
             os.path.join(masks_dir, img_id.replace('.tif', '.png').replace('.TIF', '.png'))
+            if img_id.lower().endswith('.tif') or img_id.lower().endswith('.tif')
+            else os.path.join(masks_dir, img_id)  # Si la imagen ya es .png, la máscara tiene el mismo nombre
             for img_id in self.ids
         ]
 
@@ -283,7 +285,7 @@ def compute_dataset_statistics(images_dir, input_shape=(640, 640), batch_size=32
     """
     # Obtener lista de imágenes
     image_paths = [os.path.join(images_dir, f) for f in os.listdir(images_dir) 
-                  if f.lower().endswith('.tif')]
+                  if f.lower().endswith('.tif') or f.lower().endswith('.png')]
     
     # Variables para acumular estadísticos
     pixel_sum = np.zeros(3)
