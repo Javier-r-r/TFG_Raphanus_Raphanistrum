@@ -5,10 +5,10 @@ import os
 from pathlib import Path
 
 
-input_folder = "segmentation-app/petalos_recortados"
-output_folder = "segmentation-app/petalos_iguales"
-input_mask_folder = "segmentation-app/petalos_recortados_mascara"
-output_mask_folder = "segmentation-app/petalos_iguales_mascara"
+input_folder = "petalos_recortados"
+output_folder = "petalos_iguales"
+input_mask_folder = "petalos_recortados_mascara"
+output_mask_folder = "petalos_iguales_mascara"
 os.makedirs(output_folder, exist_ok=True)
 os.makedirs(output_mask_folder, exist_ok=True)
 
