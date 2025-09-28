@@ -17,10 +17,16 @@ def compute_normalized_metrics(mask, petal_mask=None, img_rgb=None, reference_re
     image_diagonal = np.sqrt(height**2 + width**2)
     scale_factor = reference_resolution / image_diagonal
     
+    # Debug: imprimir valores antes de normalizar
+    print(f"Imagen: {width}x{height}, diagonal: {image_diagonal:.1f}, scale_factor: {scale_factor:.3f}")
+    print(f"Areole Size antes: {results['Areole Size (AS)']:.1f}")
+    
     # Normalizar métricas dependientes del tamaño
     results["Vein Thickness (VT)"] *= scale_factor
-    results["Areole Size (AS)"] *= (scale_factor ** 2)
+    results["Areole Size (AS)"] *= scale_factor  # Cambio: ahora es diámetro (lineal), no área (cuadrática)
     results["Vein-to-Vein Distance (VVD)"] *= scale_factor
+    
+    print(f"Areole Size después: {results['Areole Size (AS)']:.1f}")
     
     return results
 
@@ -189,7 +195,7 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
         else:
             largest_region = None
     # Calcular áreas de areolas igual que en la visualización (sin fondo ni borde)
-    areole_areas = []
+    areole_diameters = []
     if valid_regions:
         # Encontrar la región más grande (fondo) entre todas las regiones
         all_valid = [r for r in regions if r.area >= min_areole_size]
@@ -200,9 +206,11 @@ def compute_vein_metrics(mask: np.ndarray, petal_mask: np.ndarray = None, img_rg
         for r in valid_regions:
             if r is largest_region:
                 continue
-            areole_areas.append(r.area)
-    num_areoles = len(areole_areas)
-    mean_areole_size = np.mean(areole_areas) if areole_areas else 0
+            # Calcular diámetro equivalente: diámetro de un círculo con la misma área
+            equivalent_diameter = 2 * np.sqrt(r.area / np.pi)
+            areole_diameters.append(equivalent_diameter)
+    num_areoles = len(areole_diameters)
+    mean_areole_size = np.mean(areole_diameters) if areole_diameters else 0
     
     # --- 4. Branching Angle (BA) ---
     skeleton = skeletonize(binary_mask, method='zhang')

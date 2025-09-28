@@ -80,7 +80,7 @@ epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
-input_image_reshape = (640, 640)  # Desired shape for the input images and masks
+input_image_reshape = (209, 208)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
 # Añade esto al inicio del script, antes de las definiciones de hiperparámetros
@@ -270,7 +270,7 @@ def visualize_samples(images, masks, output_dir, prefix="train", num_samples=3):
         plt.savefig(os.path.join(samples_dir, f"{prefix}_sample_{i}.png"))
         plt.close()
 
-def compute_dataset_statistics(images_dir, input_shape=(640, 640), batch_size=32):
+def compute_dataset_statistics(images_dir, input_shape=(209, 208), batch_size=32):
     """
     Calcula la media y desviación estándar por canal para un conjunto de imágenes.
     

@@ -6,9 +6,8 @@ from tkinter import ttk
 
 def create_theme(style: ttk.Style):
     """Create and apply custom theme inspired by modern web UI."""
-    # Accent and neutrals inspired by the web UI
-    ACCENT = "#22c55e"        # green-500
-    ACCENT_DARK = "#16a34a"   # green-600
+    ACCENT = "#22c55e"        
+    ACCENT_DARK = "#16a34a"   
     SURFACE = "#ffffff"
     SURFACE_MUTED = "#f4f5f7"
     BORDER = "#e5e7eb"
