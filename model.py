@@ -80,7 +80,7 @@ epochs_max = 250 # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
-input_image_reshape = (209, 208)  # Desired shape for the input images and masks
+input_image_reshape = (224, 224)  # Desired shape for the input images and masks
 foreground_class = 1  # 1 for binary segmentation
 
 # Añade esto al inicio del script, antes de las definiciones de hiperparámetros
@@ -181,6 +181,11 @@ class PetalVeinDataset(BaseDataset):
             augmented = self.augmentation(image=image, mask=mask)
             image, mask = augmented['image'], augmented['mask']
         
+        # Force exact size after augmentations (in case augmentations changed it)
+        if image.shape[:2] != self.input_image_reshape:
+            image = cv2.resize(image, target_size)
+            mask = cv2.resize(mask, target_size, interpolation=cv2.INTER_NEAREST)
+        
         # Convert to PyTorch tensors
         # Image: HWC -> CHW
         image = torch.from_numpy(image.transpose(2, 0, 1)).float()
@@ -189,6 +194,12 @@ class PetalVeinDataset(BaseDataset):
         
         # Mask: ensure it's LongTensor
         mask = torch.from_numpy(mask).long()
+        
+        # Debug: Verify shapes are consistent
+        if image.shape != (3, self.input_image_reshape[0], self.input_image_reshape[1]):
+            raise ValueError(f"Image shape mismatch: expected {(3, self.input_image_reshape[0], self.input_image_reshape[1])}, got {image.shape}")
+        if mask.shape != (self.input_image_reshape[0], self.input_image_reshape[1]):
+            raise ValueError(f"Mask shape mismatch: expected {(self.input_image_reshape[0], self.input_image_reshape[1])}, got {mask.shape}")
         
         return image, mask
     
@@ -271,7 +282,7 @@ def visualize_samples(images, masks, output_dir, prefix="train", num_samples=3):
         plt.savefig(os.path.join(samples_dir, f"{prefix}_sample_{i}.png"))
         plt.close()
 
-def compute_dataset_statistics(images_dir, input_shape=(209, 208), batch_size=32):
+def compute_dataset_statistics(images_dir, input_shape=(224, 224), batch_size=32):
     """
     Calcula la media y desviación estándar por canal para un conjunto de imágenes.
     
