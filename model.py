@@ -171,9 +171,10 @@ class PetalVeinDataset(BaseDataset):
         # Convert mask to binary (veins=1, background=0)
         mask = (mask > 0).astype(np.uint8)
         
-        # Resize both image and mask
-        image = cv2.resize(image, self.input_image_reshape)
-        mask = cv2.resize(mask, self.input_image_reshape, interpolation=cv2.INTER_NEAREST)
+        # Resize both image and mask (OpenCV expects (width, height))
+        target_size = (self.input_image_reshape[1], self.input_image_reshape[0])  # (width, height)
+        image = cv2.resize(image, target_size)
+        mask = cv2.resize(mask, target_size, interpolation=cv2.INTER_NEAREST)
         
         # Apply augmentations if specified
         if self.augmentation:
@@ -301,7 +302,9 @@ def compute_dataset_statistics(images_dir, input_shape=(209, 208), batch_size=32
             # Leer imagen y redimensionar
             img = cv2.imread(path)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convertir a RGB
-            img = cv2.resize(img, input_shape)
+            # OpenCV expects (width, height)
+            target_size = (input_shape[1], input_shape[0])  # (width, height)
+            img = cv2.resize(img, target_size)
             batch_images.append(img)
             
         batch_images = np.stack(batch_images)
