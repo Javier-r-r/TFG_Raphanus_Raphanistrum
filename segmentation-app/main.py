@@ -49,12 +49,13 @@ class SegTkApp:
 
         # Tk control variables must exist before building widgets that bind to them
         self.force_imagenet = tk.BooleanVar(value=False)
-        self.default_resize_var = tk.StringVar(value="640")
+        self.default_resize_var = tk.StringVar(value="224")
         self.arch_var = tk.StringVar(value="Unet")
         self.encoder_var = tk.StringVar(value="resnet34")
         self.weights_path_var = tk.StringVar(value="")
         self.threshold = tk.DoubleVar(value=0.5)
         self.alpha = tk.DoubleVar(value=0.5)
+        
 
         # Scrollable wrapper (page-level)
         self.scroll = ScrollableFrame(root)
@@ -179,8 +180,10 @@ class SegTkApp:
         resize_entry.grid(row=6, column=5, sticky="w", padx=4, pady=(6, 2))
         self.resize_entry = resize_entry
 
+    # (Post-processing controls removed — predictions are returned raw after threshold/resize)
+
         # Actions row
-        row = 7
+        row = 9
         actions = ttk.Frame(card, style="Card.TFrame")
         actions.grid(row=row, column=0, columnspan=6, sticky="we", pady=(8, 2))
         ttk.Button(actions, text="Open Image", command=self.on_open_image, style="Secondary.TButton").pack(side=tk.LEFT, padx=(0, 6))
@@ -443,18 +446,51 @@ class SegTkApp:
                 if msg_type == "log":
                     self._write_debug(payload)
                 elif msg_type == "progress":
-                    # payload expected as float 0..1
+                    # payload can be (processed, total) or a float 0..1
                     try:
-                        pct = float(payload)
-                        # if you have a progress widget update here
-                        # self.progress_var.set(pct*100)
-                        self._write_debug(f"Progress: {pct*100:.1f}%")
+                        if isinstance(payload, (list, tuple)) and len(payload) == 2:
+                            processed, total = payload
+                            try:
+                                total_i = int(total)
+                                proc_i = int(processed)
+                                # Ensure progress bar configured
+                                self.progress_bar['maximum'] = max(1, total_i)
+                                self.progress_bar['value'] = proc_i
+                                self.progress_label.config(text=f"Processing {proc_i}/{total_i}...")
+                            except Exception:
+                                self._write_debug(f"Progress: {processed}/{total}")
+                        else:
+                            pct = float(payload)
+                            # if using fraction, convert to bar value if maximum set
+                            maxv = int(self.progress_bar['maximum']) if self.progress_bar['maximum'] else 100
+                            self.progress_bar['value'] = pct * maxv
+                            self.progress_label.config(text=f"Progress: {pct*100:.1f}%")
                     except Exception:
                         pass
                 elif msg_type == "done":
                     self._write_debug("Task finished")
                     self._on_task_done(payload)
                     self._enable_controls()
+                    # If worker returned a batch summary, handle UI cleanup/notification
+                    try:
+                        if isinstance(payload, dict) and payload.get('batch_done'):
+                            # hide progress
+                            try:
+                                self.progress_frame.pack_forget()
+                            except Exception:
+                                pass
+                            results_folder = payload.get('results_folder')
+                            processed = payload.get('processed', 0)
+                            metrics_count = payload.get('metrics_count', 0)
+                            self._show_notification("Batch Complete",
+                                f"Processed {processed} new images successfully.\n"
+                                f"Total images in results: {metrics_count}\n"
+                                f"Results saved to: {results_folder}\n"
+                                f"- Mask images: *_mask.png\n"
+                                f"- Metrics summary: metrics_summary.csv")
+                            self._write_debug(f"Batch processing complete. {processed} new images processed. Total: {metrics_count} images in results.")
+                    except Exception:
+                        pass
                 elif msg_type == "error":
                     self._write_debug(f"Error: {payload}")
                     messagebox.showerror("Error", str(payload))
@@ -658,7 +694,8 @@ class SegTkApp:
                 with torch.no_grad():
                     logits = self.model(img_t)
                 thresh = float(self.threshold.get()) if hasattr(self, "threshold") else 0.5
-                mask = postprocess_mask(logits, threshold=thresh, out_size=(original_size[0], original_size[1]))
+                # postprocess_mask now only applies sigmoid->threshold->resize; apply denoise by default
+                mask = postprocess_mask(logits, threshold=thresh, out_size=(original_size[0], original_size[1]), denoise=True, kernel_size=2)
                 alpha = float(self.alpha.get()) if hasattr(self, "alpha") else 0.5
                 overlay = color_overlay(img_rgb, mask, alpha=alpha)
                 return {"mask": mask, "overlay": overlay, "input_img": img_rgb}
@@ -711,7 +748,10 @@ class SegTkApp:
             mask_bin = (self.last_mask >= 128).astype(np.uint8)
             petal_mask = None
             img_rgb = self.np_input_rgb if self.np_input_rgb is not None else None
-            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb)
+            # Desactivar normalización para usar valores en píxeles reales
+            h, w = mask_bin.shape
+            current_diagonal = np.sqrt(h**2 + w**2)
+            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask, img_rgb=img_rgb, reference_resolution=current_diagonal)
             self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
@@ -743,7 +783,10 @@ class SegTkApp:
                     if petal_img is not None:
                         petal_mask = (petal_img >= 128).astype(np.uint8)
             mask_bin = (img >= 128).astype(np.uint8)
-            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask)
+            # Desactivar normalización para usar valores en píxeles reales
+            h, w = mask_bin.shape
+            current_diagonal = np.sqrt(h**2 + w**2)
+            res = compute_normalized_metrics(mask_bin, petal_mask=petal_mask, reference_resolution=current_diagonal)
             self.current_metrics = res
             self._show_metrics(res)
         except Exception as e:
@@ -864,98 +907,128 @@ class SegTkApp:
             self._show_notification("Batch Complete", "All images in this folder have already been processed!")
             return
         
-        # Show progress
-        self.progress_frame.pack()
-        self.progress_bar['maximum'] = len(images_to_process)
-        self.progress_bar['value'] = 0
-        
-        # Prepare CSV for metrics - load existing data if CSV exists
-        metrics_data = []
-        if csv_path.exists():
-            try:
-                with open(csv_path, 'r', encoding='utf-8') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    metrics_data = list(reader)
-                self._write_debug(f"Loaded {len(metrics_data)} existing metrics records")
-            except Exception as e:
-                self._write_debug(f"Could not load existing metrics: {e}")
-                metrics_data = []
-        
+        # Run processing in background worker so UI stays responsive.
+        # Prepare arguments to pass to worker (convert Paths to strings to avoid pickling issues)
+        images_list = [str(p) for p in images_to_process]
         thr = float(self.threshold.get())
         target_size = self._get_default_resize()
-        
-        self._write_debug(f"Starting batch processing of {len(images_to_process)} new images...")
-        
-        try:
-            for i, image_path in enumerate(images_to_process):
-                self.progress_label.config(text=f"Processing {image_path.name}...")
-                self.root.update()  # Update UI
-                
+        results_folder_str = str(results_folder)
+
+        def _batch_task(images, threshold_val, target_size_val, results_folder_path, out_q=None):
+            """Background batch worker. Sends ('log', msg), ('progress', (i,total)) and returns summary dict."""
+            total = len(images)
+            metrics_records = []
+            csv_path_local = os.path.join(results_folder_path, 'metrics_summary.csv')
+
+            # Load existing CSV records (normalize image_name values)
+            existing = set()
+            if os.path.exists(csv_path_local):
                 try:
+                    with open(csv_path_local, 'r', encoding='utf-8') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for r in reader:
+                            name = r.get('image_name')
+                            if name:
+                                existing.add(normalize_filename(name))
+                    if out_q:
+                        out_q.put(("log", f"Found existing metrics CSV with {len(existing)} processed images"))
+                except Exception as e:
+                    if out_q:
+                        out_q.put(("log", f"Could not read existing CSV: {e}"))
+
+            for i, img_path in enumerate(images):
+                try:
+                    img_name = os.path.basename(img_path)
+                    norm_img_name = normalize_filename(img_name)
+                    # Skip if already present
+                    mask_filename = normalize_filename(f"{Path(img_path).stem}_mask.png")
+                    mask_path = os.path.join(results_folder_path, mask_filename)
+                    if os.path.exists(mask_path) and norm_img_name in existing:
+                        if out_q:
+                            out_q.put(("log", f"Skipping already processed: {img_name}"))
+                        # still report progress
+                        if out_q:
+                            out_q.put(("progress", (i+1, total)))
+                        continue
+
                     # Load and process image
-                    pil_img = Image.open(image_path).convert("RGB")
-                    img_rgb, img_t, original_size = preprocess_image_pil(pil_img, target_size=target_size)
-                    
-                    # Run inference
+                    pil_img = Image.open(img_path).convert('RGB')
+                    img_rgb_local, img_t_local, original_size = preprocess_image_pil(pil_img, target_size=target_size_val)
+
                     with torch.no_grad():
-                        logits = self.model(img_t.to(next(self.model.parameters()).device))
-                    mask = postprocess_mask(logits, thr, out_size=original_size)
-                    
+                        logits = self.model(img_t_local.to(next(self.model.parameters()).device))
+                    mask = postprocess_mask(logits, threshold_val, out_size=original_size, denoise=True, kernel_size=2)
+
                     # Save mask
-                    mask_filename = normalize_filename(f"{image_path.stem}_mask.png")
-                    mask_path = results_folder / mask_filename
-                    cv2.imwrite(str(mask_path), mask)
-                    
+                    cv2.imwrite(mask_path, mask)
+
                     # Compute metrics
                     mask_bin = (mask >= 128).astype(np.uint8)
-                    metrics = compute_normalized_metrics(mask_bin, img_rgb=img_rgb)
-                    
-                    # Add to CSV data
-                    row_data = {
-                        'image_name': normalize_filename(image_path.name),
+                    h, w = mask_bin.shape
+                    current_diagonal = np.sqrt(h**2 + w**2)
+                    metrics = compute_normalized_metrics(mask_bin, img_rgb=img_rgb_local, reference_resolution=current_diagonal)
+
+                    row = {
+                        'image_name': norm_img_name,
                         'mask_name': mask_filename,
-                        'threshold': thr,
+                        'threshold': threshold_val,
                         'image_size': f"{original_size[0]}x{original_size[1]}",
                         **metrics
                     }
-                    metrics_data.append(row_data)
-                    
-                    self._write_debug(f"✓ Processed {image_path.name}")
-                    
-                except Exception as e:
-                    self._write_debug(f"✗ Failed to process {image_path.name}: {e}")
-                    continue
-                
-                # Update progress
-                self.progress_bar['value'] = i + 1
-                self.root.update()
-        
-            # Save metrics CSV
-            if metrics_data:
-                with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                    fieldnames = metrics_data[0].keys()
-                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(metrics_data)
-                
-                self._write_debug(f"✓ Saved metrics summary to {csv_path}")
-            
-            # Hide progress and show completion
-            self.progress_frame.pack_forget()
+                    metrics_records.append(row)
+                    if out_q:
+                        out_q.put(("log", f"✓ Processed {img_name}"))
 
-            self._show_notification("Batch Complete", 
-                              f"Processed {len(images_to_process)} new images successfully.\n"
-                              f"Total images in results: {len(metrics_data)}\n"
-                              f"Results saved to: {results_folder}\n"
-                              f"- Mask images: *_mask.png\n"
-                              f"- Metrics summary: metrics_summary.csv")
-            
-            self._write_debug(f"Batch processing complete. {len(images_to_process)} new images processed. Total: {len(metrics_data)} images in results.")
-            
+                except Exception as e:
+                    if out_q:
+                        out_q.put(("log", f"✗ Failed to process {img_path}: {e}"))
+                finally:
+                    # report progress after each image
+                    if out_q:
+                        out_q.put(("progress", (i+1, total)))
+
+            # Merge with existing CSV if present
+            try:
+                existing_rows = []
+                if os.path.exists(csv_path_local):
+                    with open(csv_path_local, 'r', encoding='utf-8') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        existing_rows = list(reader)
+                # Append new records
+                all_rows = existing_rows + metrics_records
+                if all_rows:
+                    fieldnames = list(all_rows[0].keys())
+                    with open(csv_path_local, 'w', newline='', encoding='utf-8') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(all_rows)
+                    if out_q:
+                        out_q.put(("log", f"✓ Saved metrics summary to {csv_path_local}"))
+            except Exception as e:
+                if out_q:
+                    out_q.put(("log", f"Error saving CSV: {e}"))
+
+            # Return summary for UI
+            return {
+                'batch_done': True,
+                'results_folder': results_folder_path,
+                'processed': len(images),
+                'metrics_count': len(existing_rows) + len(metrics_records) if 'existing_rows' in locals() else len(metrics_records)
+            }
+
+        # show progress frame and start background worker
+        try:
+            self.progress_frame.pack()
+            self.progress_bar['maximum'] = len(images_list)
+            self.progress_bar['value'] = 0
+            self.progress_label.config(text="Starting batch...")
+            # Launch background task; pass out_q via kwargs so worker can post progress/logs
+            self.start_task_in_background(_batch_task, args=(images_list, thr, target_size, results_folder_str), kwargs={'out_q': self.task_queue})
+            self._write_debug(f"Started background batch for {len(images_list)} images")
         except Exception as e:
             self.progress_frame.pack_forget()
-            messagebox.showerror("Batch Error", f"Batch processing failed: {e}")
-            self._write_debug(f"Batch processing error: {e}")
+            messagebox.showerror("Batch Error", f"Failed to start batch: {e}")
+            self._write_debug(f"Failed to start batch: {e}")
 
     def _update_model_status(self, status: str, color_style: str = "Muted.TLabel", info: str = ""):
         """Update the model status indicator."""
