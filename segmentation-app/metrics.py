@@ -4,6 +4,7 @@ import networkx as nx
 from skimage.morphology import skeletonize
 from skimage.measure import label, regionprops
 from scipy.ndimage import distance_transform_edt
+from scipy.spatial import cKDTree
 from math import atan2, degrees
 from petals_generator import generate_petal_mask_from_rgb
 
@@ -100,6 +101,9 @@ def compute_adjacent_vein_distances(skeleton, binary_mask, G, n_samples=200):
         idx = np.random.choice(len(coords), n_samples, replace=False)
         coords = coords[idx]
 
+    # Etiquetar las componentes una sola vez (para distinguir la propia vena)
+    labeled = label(binary_mask, connectivity=1)
+
     distances = []
     for y, x in coords:
         # Encuentra los dos vecinos para estimar la dirección local
@@ -113,24 +117,78 @@ def compute_adjacent_vein_distances(skeleton, binary_mask, G, n_samples=200):
         norm = np.hypot(dy, dx)
         if norm == 0:
             continue
-        # Vector perpendicular
-        perp1 = (int(round(-dx / norm)), int(round(dy / norm)))
-        perp2 = (int(round(dx / norm)), int(round(-dy / norm)))
+        # Vector perpendicular (componentes en coordenadas y,x)
+        perp_y1 = int(round(-dx / norm))
+        perp_x1 = int(round(dy / norm))
+        perp_y2 = -perp_y1
+        perp_x2 = -perp_x1
 
-        # Busca en ambas direcciones perpendiculares
+        # etiqueta actual del punto de esqueleto
+        current_label = labeled[y, x] if (0 <= y < labeled.shape[0] and 0 <= x < labeled.shape[1]) else 0
+
+        # Busca en ambas direcciones perpendiculares: exige primero salir de la propia
+        # vena (encontrar background) y sólo entonces aceptar el siguiente foreground.
+        # Esto evita contar el grosor local (d=1) cuando el primer foreground pertenece
+        # a la propia vena.
         min_dist = None
-        for perp in [perp1, perp2]:
-            for d in range(1, 50):  
-                yy = y + perp[1] * d
-                xx = x + perp[0] * d
-                if 0 <= yy < binary_mask.shape[0] and 0 <= xx < binary_mask.shape[1]:
-                    if binary_mask[yy, xx]:
-                        min_dist = d if (min_dist is None or d < min_dist) else min_dist
-                        break
-                else:
+        max_search = 200
+        for perp_y, perp_x in [(perp_y1, perp_x1), (perp_y2, perp_x2)]:
+            found_background = False
+            for d in range(1, max_search + 1):
+                yy = int(y + perp_y * d)
+                xx = int(x + perp_x * d)
+                if not (0 <= yy < binary_mask.shape[0] and 0 <= xx < binary_mask.shape[1]):
                     break
+                if not binary_mask[yy, xx]:
+                    # Hemos salido de la propia vena
+                    found_background = True
+                    continue
+                # Si todavía no hemos salido de la vena, ignoramos foreground (grosor)
+                if not found_background:
+                    continue
+                # Ahora sí: el primer foreground tras el fondo -> registrar distancia
+                min_dist = d if (min_dist is None or d < min_dist) else min_dist
+                break
         if min_dist is not None:
             distances.append(min_dist)
+    # Si no se encontraron distancias por la búsqueda perpendicular, usar fallback KDTree
+    if not distances:
+        # Obtener puntos de esqueleto por etiqueta (solo etiquetas > 0)
+        sk_mask = (skeleton > 0)
+        ys, xs = np.where(sk_mask)
+        if ys.size == 0:
+            return []
+        labels_at_points = labeled[ys, xs]
+        unique_labels = np.unique(labels_at_points)
+        unique_labels = unique_labels[unique_labels > 0]
+        if unique_labels.size < 2:
+            # no hay varias componentes etiquetadas -> no hay vena distinta
+            return []
+
+        # Agrupar coords por etiqueta
+        points_by_label = {}
+        for lab in unique_labels:
+            mask_lab = (labels_at_points == lab)
+            pts = np.column_stack((ys[mask_lab], xs[mask_lab]))
+            if pts.size:
+                points_by_label[lab] = pts
+
+        # Calcular distancia mínima entre cada par de componentes con cKDTree
+        labels_list = list(points_by_label.keys())
+        for i in range(len(labels_list)):
+            li = labels_list[i]
+            pts_i = points_by_label[li]
+            tree_i = cKDTree(pts_i)
+            for j in range(i + 1, len(labels_list)):
+                lj = labels_list[j]
+                pts_j = points_by_label[lj]
+                if pts_j.size == 0:
+                    continue
+                # query pts_j against tree_i
+                dists, _ = tree_i.query(pts_j, k=1)
+                min_pair_dist = float(np.min(dists)) if dists.size else None
+                if min_pair_dist is not None:
+                    distances.append(min_pair_dist)
     return distances
 
 
