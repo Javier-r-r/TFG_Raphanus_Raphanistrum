@@ -714,10 +714,21 @@ class SegTkApp:
         if not path:
             return
         try:
-            # Normaliza la ruta antes de guardar
-            norm_path = normalize_filename(path)
-            cv2.imwrite(norm_path, self.last_mask)
-            self._show_notification("Save Mask", f"Saved: {norm_path}")
+            # Normaliza solo el nombre de fichero y conserva la carpeta seleccionada
+            folder = os.path.dirname(path)
+            base = os.path.basename(path)
+            norm_base = normalize_filename(base)
+            norm_path = os.path.join(folder, norm_base)
+            success = cv2.imwrite(norm_path, self.last_mask)
+            # Log the low-level result of the write operation for debugging
+            try:
+                self._write_debug(f"cv2.imwrite('{norm_path}') returned: {success}")
+            except Exception:
+                pass
+            if success:
+                self._show_notification("Save Mask", f"Saved: {norm_path}")
+            else:
+                messagebox.showerror("Save Mask", f"Failed to save mask. cv2.imwrite returned: {success}")
         except Exception as e:
             messagebox.showerror("Save Mask", f"Failed to save mask:\n{e}")
 
@@ -730,10 +741,22 @@ class SegTkApp:
         if not path:
             return
         try:
-            norm_path = normalize_filename(path)
+            # Normaliza solo el nombre de fichero y conserva la carpeta seleccionada
+            folder = os.path.dirname(path)
+            base = os.path.basename(path)
+            norm_base = normalize_filename(base)
+            norm_path = os.path.join(folder, norm_base)
             bgr = cv2.cvtColor(self.last_overlay, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(norm_path, bgr)
-            self._show_notification("Save Overlay", f"Saved: {norm_path}")
+            success = cv2.imwrite(norm_path, bgr)
+            # Log the low-level result of the write operation for debugging
+            try:
+                self._write_debug(f"cv2.imwrite('{norm_path}') returned: {success}")
+            except Exception:
+                pass
+            if success:
+                self._show_notification("Save Overlay", f"Saved: {norm_path}")
+            else:
+                messagebox.showerror("Save Overlay", f"Failed to save overlay. cv2.imwrite returned: {success}")
         except Exception as e:
             messagebox.showerror("Save Overlay", f"Failed to save overlay:\n{e}")
 
