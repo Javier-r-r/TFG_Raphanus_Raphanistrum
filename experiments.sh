@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Configuración básica
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_results"
 DATASET_ORIG_IMAGES="../petalos_iguales"
@@ -10,7 +9,6 @@ rm -rf $OUTPUT_DIR $SPLIT_ROOT
 mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}/{split1,split2,split3}
 source ~/myenv/bin/activate
 
-# Generar splits reproducibles 70/15/15 usando database_segmentation.py
 echo "Generando splits reproducibles 70/15/15..."
 for split_num in 1 2 3; do
     split_dir="$SPLIT_ROOT/split$split_num"
@@ -18,7 +16,6 @@ for split_num in 1 2 3; do
     python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
 done
 
-# Función para ejecutar comandos con log
 run_experiment() {
     local cmd=$1
     local log_file=$2
@@ -28,7 +25,6 @@ run_experiment() {
     echo "Fin: $(date)" >> "$log_file"
 }
 
-# 1. Experimentos variando arquitecturas (encoder fijo: resnet34, loss por defecto: bce_dice)
 ENCODER="mobilenet_v2"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
 LOSS="dice"
@@ -45,8 +41,6 @@ for split_num in 1 2 3; do
     done
 done
 
-
-# 2. Experimentos variando encoders (arquitectura fija: Unet, loss por defecto: bce_dice)
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
 LOSS="dice"
@@ -63,8 +57,6 @@ for split_num in 1 2 3; do
     done
 done
 
-
-# 3. Experimentos variando funciones de pérdida (arquitectura: Unet, encoder: resnet34)
 ARCH="Unet"
 ENCODER="mobilenet_v2"
 LOSSES=("dice" "bce" "focal" "bce_dice")
@@ -87,12 +79,10 @@ echo "- Arquitecturas: $OUTPUT_DIR/arquitectura/split[1-3]/"
 echo "- Encoders: $OUTPUT_DIR/encoders/split[1-3]/"
 echo "- Funciones de pérdida: $OUTPUT_DIR/loss/split[1-3]/"
 
-# Generar resumen de resultados
 echo "Generando resumen de resultados completos..."
 SUMMARY_FILE="$OUTPUT_DIR/experiment_summary.csv"
 DETAILED_FILE="$OUTPUT_DIR/experiment_detailed_summary.csv"
 
-# Encabezados mejorados
 echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,model_path" > "$SUMMARY_FILE"
 echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,epochs,train_time,model_path" > "$DETAILED_FILE"
 
@@ -100,22 +90,16 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
     for split_num in 1 2 3; do
         for exp_dir in $OUTPUT_DIR/$experiment_type/split$split_num/*/; do
             if [ -d "$exp_dir" ]; then
-                # Extraer metadatos del nombre del directorio de forma robusta
                 dirname=$(basename "$exp_dir")
-                # Contar partes
                 IFS='_' read -ra parts <<< "$dirname"
                 n=${#parts[@]}
 
                 if [ "$experiment_type" == "arquitectura" ]; then
-                    # Formato: encoder_arch_loss
                     encoder=${parts[0]}
                     arch=${parts[1]}
-                    # loss puede tener guiones bajos
                     loss=$(IFS=_; echo "${parts[@]:2}")
                 elif [ "$experiment_type" == "encoders" ]; then
-                    # Formato: arch_encoder_loss (encoder puede tener guiones bajos)
                     arch=${parts[0]}
-                    # encoder puede ser resnet34, resnet50, efficientnet-b0, mobilenet_v2
                     if [ $n -eq 4 ]; then
                         encoder="${parts[1]}_${parts[2]}"
                         loss=${parts[3]}
@@ -124,13 +108,11 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                         loss=$(IFS=_; echo "${parts[@]:2}")
                     fi
                 else
-                    # Formato: arch_encoder_loss (loss puede tener guiones bajos)
                     arch=${parts[0]}
                     encoder=${parts[1]}
                     loss=$(IFS=_; echo "${parts[@]:2}")
                 fi
 
-                # Inicializar variables
                 test_loss="NA"
                 iou_score="NA"
                 precision="NA"
@@ -139,7 +121,6 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                 epochs="NA"
                 train_time="NA"
 
-                # Leer de metricas_detalladas.csv si existe
                 if [ -f "$exp_dir/metricas_detalladas.csv" ]; then
                     metrics=$(tail -n 1 "$exp_dir/metricas_detalladas.csv")
                     test_loss=$(echo "$metrics" | cut -d',' -f1)
@@ -149,27 +130,22 @@ for experiment_type in "arquitectura" "encoders" "loss"; do
                     f1_score=$(echo "$metrics" | cut -d',' -f5)
                 fi
 
-                # Leer información adicional de config.json
                 if [ -f "$exp_dir/config.json" ]; then
                     epochs=$(jq -r '.epochs_max' "$exp_dir/config.json" 2>/dev/null || echo "NA")
                 fi
 
-                # Leer tiempo de entrenamiento del log
                 if [ -f "$exp_dir/train_history.csv" ]; then
                     train_time=$(tail -n 1 "$exp_dir/train_history.csv" | cut -d',' -f3)
                 fi
 
-                # Escribir en el resumen básico (sin repetir el nombre de la arquitectura en f1_score ni en model_path)
                 echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$exp_dir" >> "$SUMMARY_FILE"
 
-                # Escribir en el resumen detallado
                 echo "$experiment_type,split$split_num,$arch,$encoder,$loss,$test_loss,$iou_score,$precision,$recall,$f1_score,$epochs,$train_time,$exp_dir" >> "$DETAILED_FILE"
             fi
         done
     done
 done
 
-# Generar también un archivo de resumen por splits
 SPLIT_SUMMARY="$OUTPUT_DIR/split_summary.csv"
 echo "split,architecture,encoder,loss,avg_iou,avg_precision,avg_recall" > "$SPLIT_SUMMARY"
 
@@ -177,7 +153,6 @@ for split_num in 1 2 3; do
     for arch in "${ARCHITECTURES[@]}"; do
         for encoder in "${ENCODERS[@]}"; do
             for loss in "${LOSSES[@]}"; do
-                # Calcular promedios para esta combinación
                 metrics=$(grep ",split$split_num,$arch,$encoder,$loss," "$SUMMARY_FILE" | awk -F',' 'BEGIN{OFS=",";count=0;iou=0;prec=0;rec=0}
                 {if($6!="NA"){count++; iou+=$7; prec+=$8; rec+=$9}}
                 END{if(count>0){print count, iou/count, prec/count, rec/count} else {print "0,NA,NA,NA"}}')

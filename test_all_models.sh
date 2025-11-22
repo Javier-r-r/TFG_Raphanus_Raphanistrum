@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-# Script para evaluar todos los modelos entrenados usando los pesos guardados en experiment_results
 
 BASE_CMD="python model.py"
 OUTPUT_DIR="experiment_tests"
@@ -12,7 +11,6 @@ rm -rf $OUTPUT_DIR $SPLIT_ROOT
 mkdir -p $OUTPUT_DIR/{arquitectura,encoders,loss}/{split1,split2,split3}
 source ~/myenv/bin/activate
 
-# Generar splits reproducibles 70/15/15 usando database_segmentation.py
 echo "Generando splits reproducibles 70/15/15..."
 for split_num in 1 2 3; do
     split_dir="$SPLIT_ROOT/split$split_num"
@@ -20,7 +18,6 @@ for split_num in 1 2 3; do
     python database_segmentation.py --images_dir $DATASET_ORIG_IMAGES --masks_dir $DATASET_ORIG_MASKS --output_dir $split_dir --seed $((42 + split_num))
 done
 
-# Función para ejecutar test con log (más robusta)
 run_test() {
     local log_file=$1
     shift
@@ -30,13 +27,12 @@ run_test() {
     echo "Fin: $(date)" >> "$log_file"
 }
 
-# 1. Test de arquitecturas
 ENCODER="mobilenet_v2"
 ARCHITECTURES=("Unet" "FPN" "PSPNet" "DeepLabV3")
 LOSS="dice"
 
 for split_num in 1 2 3; do
-    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
+    split="$SPLIT_ROOT/split$split_num"
     for arch in "${ARCHITECTURES[@]}"; do
         exp_dir="$WEIGHTS_DIR/arquitectura/split${split_num}/${ENCODER}_${arch}_${LOSS}"
         weights_path="$exp_dir/best_model.pth"
@@ -50,13 +46,12 @@ for split_num in 1 2 3; do
     done
 done
 
-# 2. Test de encoders
 ARCH="Unet"
 ENCODERS=("resnet34" "resnet50" "efficientnet-b0" "mobilenet_v2")
 LOSS="dice"
 
 for split_num in 1 2 3; do
-    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
+    split="$SPLIT_ROOT/split$split_num"
     for encoder in "${ENCODERS[@]}"; do
         exp_dir="$WEIGHTS_DIR/encoders/split${split_num}/${ARCH}_${encoder}_${LOSS}"
         weights_path="$exp_dir/best_model.pth"
@@ -70,13 +65,12 @@ for split_num in 1 2 3; do
     done
 done
 
-# 3. Test de funciones de pérdida
 ARCH="Unet"
 ENCODER="mobilenet_v2"
 LOSSES=("dice" "bce" "focal" "bce_dice")
 
 for split_num in 1 2 3; do
-    split="$SPLIT_ROOT/split$split_num"  # <--- Cambia aquí
+    split="$SPLIT_ROOT/split$split_num"
     for loss in "${LOSSES[@]}"; do
         exp_dir="$WEIGHTS_DIR/loss/split${split_num}/${ARCH}_${ENCODER}_${loss}"
         weights_path="$exp_dir/best_model.pth"
@@ -92,7 +86,6 @@ done
 
 echo "Evaluación de test completada para todos los modelos."
 
-# === Generar resumen de resultados de test ===
 SUMMARY_FILE="$OUTPUT_DIR/test_summary.csv"
 echo "experiment_type,split,architecture,encoder,loss,test_loss,iou_score,precision,recall,f1_score,model_path" > "$SUMMARY_FILE"
 
