@@ -31,13 +31,13 @@ The script includes the following steps:
 2. Download the CamVid dataset if it is not already present.
 3. Define hyperparameters for training.
 4. Define a custom dataset class for loading and preprocessing the CamVid
-     dataset.
+    dataset.
 5. Define a function to visualize images and masks.
 6. Create datasets and dataloaders for training, validation, and testing.
 7. Define a model class for the segmentation task.
 8. Train the model using the training and validation datasets.
 9. Evaluate the model using the test dataset and save the output masks and
-     metrics.
+    metrics.
 """
 
 import logging
@@ -64,26 +64,19 @@ logging.basicConfig(
     datefmt="%d:%m:%Y %H:%M:%S",
 )
 
-# ----------------------------
-# Set the device to GPU if available
-# ----------------------------
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"Using device: {device}")
 if device == "cpu":
     os.system("export OMP_NUM_THREADS=64")
     torch.set_num_threads(os.cpu_count())
 
-# ----------------------------
-# Define the hyperparameters
-# ----------------------------
-epochs_max = 250 # Number of epochs to train the model
-adam_lr = 2e-4  # Learning rate for the Adam optimizer
-eta_min = 1e-5  # Minimum learning rate for the scheduler
-batch_size = 8  # Batch size for training
-input_image_reshape = (224, 224)  # Desired shape for the input images and masks
-foreground_class = 1  # 1 for binary segmentation
+epochs_max = 250
+adam_lr = 2e-4
+eta_min = 1e-5
+batch_size = 8
+input_image_reshape = (224, 224)
+foreground_class = 1
 
-# Añade esto al inicio del script, antes de las definiciones de hiperparámetros
 def parse_args():
     parser = argparse.ArgumentParser(description='Entrenamiento de modelo de segmentación')
     parser.add_argument('-arquitectura', '--arch', type=str, default='Unet', 
@@ -99,10 +92,6 @@ def parse_args():
     parser.add_argument('--test_only', action='store_true', help='Solo ejecutar test, no entrenar')
     parser.add_argument('--weights', type=str, default=None, help='Ruta a los pesos del modelo para test')
     return parser.parse_args()
-
-# ----------------------------
-# Define a custom dataset class for the CamVid dataset
-# ----------------------------
 class PetalVeinDataset(BaseDataset):
     """
     Custom dataset class for petal vein segmentation with TIFF images and PNG masks.
@@ -115,7 +104,7 @@ class PetalVeinDataset(BaseDataset):
     - augmentation (callable, optional): Augmentation transforms to apply.
     - normalize (bool, optional): Whether to normalize images to [0,1]. Default True.
     """
-    
+
     def __init__(
         self,
         images_dir,
@@ -124,30 +113,26 @@ class PetalVeinDataset(BaseDataset):
         augmentation=None,
         normalize=True
     ):
-        # Get all image files (.tif and .png)
         self.ids = [f for f in os.listdir(images_dir) if f.lower().endswith('.tif') or f.lower().endswith('.png')]
 
-        # Validate that we found images
         if not self.ids:
             raise ValueError(f"No TIFF or PNG images found in {images_dir}")
 
-        # Create full paths for images and corresponding masks
         self.images_filepaths = [
             os.path.join(images_dir, img_id) for img_id in self.ids
         ]
 
-        # Masks are PNG files with same base name
         self.masks_filepaths = [
             os.path.join(masks_dir, img_id.replace('.tif', '.png').replace('.TIF', '.png'))
             if img_id.lower().endswith('.tif') or img_id.lower().endswith('.tif')
-            else os.path.join(masks_dir, img_id)  # Si la imagen ya es .png, la máscara tiene el mismo nombre
+            else os.path.join(masks_dir, img_id)
             for img_id in self.ids
         ]
 
         self.input_image_reshape = input_image_reshape
         self.augmentation = augmentation
         self.normalize = normalize
-        
+
     def __getitem__(self, i):
         """
         Retrieves the petal image (TIFF) and corresponding vein mask (PNG).
@@ -157,65 +142,53 @@ class PetalVeinDataset(BaseDataset):
         - image (torch.Tensor): Image tensor (3, H, W) normalized to [0,1] if normalize=True
         - mask (torch.Tensor): Binary mask tensor (H, W) with values 0 or 1
         """
-        # Read TIFF image
         image = cv2.imread(self.images_filepaths[i], cv2.IMREAD_COLOR)
         if image is None:
             raise ValueError(f"Could not read image at {self.images_filepaths[i]}")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-        
-        # Read PNG mask (grayscale)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
         mask = cv2.imread(self.masks_filepaths[i], cv2.IMREAD_GRAYSCALE)
         if mask is None:
             raise ValueError(f"Could not read mask at {self.masks_filepaths[i]}")
-        
-        # Convert mask to binary (veins=1, background=0)
+
         mask = (mask > 0).astype(np.uint8)
-        
-        # Resize both image and mask (OpenCV expects (width, height))
-        target_size = (self.input_image_reshape[1], self.input_image_reshape[0])  # (width, height)
+
+        target_size = (self.input_image_reshape[1], self.input_image_reshape[0])
         image = cv2.resize(image, target_size)
         mask = cv2.resize(mask, target_size, interpolation=cv2.INTER_NEAREST)
-        
-        # Apply augmentations if specified
+
         if self.augmentation:
             augmented = self.augmentation(image=image, mask=mask)
             image, mask = augmented['image'], augmented['mask']
-        
-        # Force exact size after augmentations (in case augmentations changed it)
+
         if image.shape[:2] != self.input_image_reshape:
             image = cv2.resize(image, target_size)
             mask = cv2.resize(mask, target_size, interpolation=cv2.INTER_NEAREST)
-        
-        # Convert to PyTorch tensors
-        # Image: HWC -> CHW
+
         image = torch.from_numpy(image.transpose(2, 0, 1)).float()
         if self.normalize:
-            image = image / 255.0  # Normalize to [0,1]
-        
-        # Mask: ensure it's LongTensor
+            image = image / 255.0
+
         mask = torch.from_numpy(mask).long()
-        
-        # Debug: Verify shapes are consistent
+
         if image.shape != (3, self.input_image_reshape[0], self.input_image_reshape[1]):
             raise ValueError(f"Image shape mismatch: expected {(3, self.input_image_reshape[0], self.input_image_reshape[1])}, got {image.shape}")
         if mask.shape != (self.input_image_reshape[0], self.input_image_reshape[1]):
             raise ValueError(f"Mask shape mismatch: expected {(self.input_image_reshape[0], self.input_image_reshape[1])}, got {mask.shape}")
-        
+
         return image, mask
-    
+
     def __len__(self):
         return len(self.ids)
 
-# Transformaciones para imágenes y máscaras (sincronizadas)
 augmentation_train = A.Compose([
-    A.HorizontalFlip(p=0.5),  # Volteo horizontal con 50% de probabilidad
-    A.VerticalFlip(p=0.5),    # Volteo vertical con 50% de probabilidad
-    A.RandomRotate90(p=0.5),  # Rotación 90 grados
-    A.RandomBrightnessContrast(p=0.2),  # Ajuste de brillo/contraste
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.RandomRotate90(p=0.5),
+    A.RandomBrightnessContrast(p=0.2),
 ])
 
-# Transformaciones para validación/test (solo normalización)
-augmentation_val_test = A.Compose([])  # Sin aumentos, solo paso de normalización
+augmentation_val_test = A.Compose([])
 
 mask_augmentation = A.Compose([
     A.HorizontalFlip(p=0.5),
@@ -223,7 +196,6 @@ mask_augmentation = A.Compose([
     A.RandomRotate90(p=0.5),
 ])
 
-# Define a class for the CamVid model
 class CamVidModel(torch.nn.Module):
     """
     A PyTorch model for binary segmentation using the Segmentation Models
@@ -255,7 +227,6 @@ class CamVidModel(torch.nn.Module):
         )
 
     def forward(self, image):
-        # Normalize image
         image = (image - self.mean) / self.std
         mask = self.model(image)
         return mask
@@ -264,21 +235,18 @@ def visualize_samples(images, masks, output_dir, prefix="train", num_samples=3):
     """Visualiza y guarda muestras de imágenes y máscaras."""
     samples_dir = os.path.join(output_dir, "samples")
     os.makedirs(samples_dir, exist_ok=True)
-    
     for i in range(min(num_samples, len(images))):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        
-        # Mostrar imagen
+
         img = images[i].transpose(1, 2, 0) if images[i].shape[0] == 3 else images[i][0]
         ax1.imshow(img, cmap='gray')
         ax1.set_title(f'Imagen {i}')
         ax1.axis('off')
-        
-        # Mostrar máscara
+
         ax2.imshow(masks[i], cmap='gray')
         ax2.set_title(f'Máscara {i}')
         ax2.axis('off')
-        
+
         plt.savefig(os.path.join(samples_dir, f"{prefix}_sample_{i}.png"))
         plt.close()
 
@@ -295,40 +263,33 @@ def compute_dataset_statistics(images_dir, input_shape=(224, 224), batch_size=32
         mean (np.array): Media por canal [R, G, B]
         std (np.array): Desviación estándar por canal [R, G, B]
     """
-    # Obtener lista de imágenes
     image_paths = [os.path.join(images_dir, f) for f in os.listdir(images_dir) 
                   if f.lower().endswith('.tif') or f.lower().endswith('.png')]
-    
-    # Variables para acumular estadísticos
+
     pixel_sum = np.zeros(3)
     pixel_sq_sum = np.zeros(3)
     num_pixels = 0
-    
-    # Procesar imágenes por lotes
+
     for i in tqdm(range(0, len(image_paths), batch_size)):
         batch_paths = image_paths[i:i+batch_size]
         batch_images = []
-        
+
         for path in batch_paths:
-            # Leer imagen y redimensionar
             img = cv2.imread(path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convertir a RGB
-            # OpenCV expects (width, height)
-            target_size = (input_shape[1], input_shape[0])  # (width, height)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            target_size = (input_shape[1], input_shape[0])
             img = cv2.resize(img, target_size)
             batch_images.append(img)
-            
+
         batch_images = np.stack(batch_images)
-        
-        # Acumular estadísticos
+
         pixel_sum += np.sum(batch_images, axis=(0, 1, 2))
         pixel_sq_sum += np.sum(batch_images**2, axis=(0, 1, 2))
         num_pixels += batch_images.shape[0] * batch_images.shape[1] * batch_images.shape[2]
-    
-    # Calcular media y desviación estándar
+
     mean = pixel_sum / num_pixels
     std = np.sqrt((pixel_sq_sum / num_pixels) - mean**2)
-    
+
     return mean, std
 
 def visualize(output_dir, image_filename, **images):
@@ -339,11 +300,9 @@ def visualize(output_dir, image_filename, **images):
         output_path = os.path.join(output_dir, f"{name}_{image_filename}")
         
         if name in ['output_mask', 'binary_mask']:
-            # Máscara binaria (0-1) → Guardar como PNG (valores 0 y 255)
-            mask = (image * 255).astype(np.uint8)  # Convertir a 0-255
+            mask = (image * 255).astype(np.uint8)
             cv2.imwrite(output_path, mask)
         else:
-            # Imagen de entrada (RGB o escala de grises)
             if image.ndim == 3 and image.shape[-1] in [3, 4]:
                 plt.imsave(output_path, image)
             else:
@@ -352,7 +311,6 @@ def visualize(output_dir, image_filename, **images):
 def train_and_evaluate_one_epoch(
     model, train_dataloader, valid_dataloader, optimizer, scheduler, loss_fn, device
 ):
-    # Set the model to training mode
     model.train()
     train_loss = 0
     for batch in tqdm(train_dataloader, desc="Training"):
@@ -362,9 +320,8 @@ def train_and_evaluate_one_epoch(
         optimizer.zero_grad()
         outputs = model(images)
 
-        # Asegurar que las máscaras tengan la forma correcta
         if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss, BCEDiceLoss)):
-            masks = masks.unsqueeze(1).float()  # Añade dimensión de canal si es necesario
+            masks = masks.unsqueeze(1).float()
         else:
             masks = masks.float()
 
@@ -377,7 +334,6 @@ def train_and_evaluate_one_epoch(
     scheduler.step()
     avg_train_loss = train_loss / len(train_dataloader)
 
-    # Set the model to evaluation mode
     model.eval()
     val_loss = 0
     with torch.no_grad():
@@ -437,23 +393,19 @@ def train_model(
         logging.info(
             f"Epoch {epoch + 1}/{epochs}, Training Loss: {avg_train_loss:.2f}, Validation Loss: {avg_val_loss:.2f}"
         )
-        # Early stopping logic
         if avg_val_loss < best_val_loss - min_delta:
             best_val_loss = avg_val_loss
             epochs_no_improve = 0
-            # Guardar los pesos del mejor modelo
             best_model_weights = model.state_dict().copy()
-            
-            # Guardar el modelo si hay directorio de salida
+
             if output_dir:
                 torch.save(model.state_dict(), os.path.join(output_dir, 'best_model.pth'))
         else:
             epochs_no_improve += 1
             logging.info(f"No improvement for {epochs_no_improve} epochs")
-            
+
             if epochs_no_improve >= patience:
                 logging.info(f"Early stopping triggered after {epoch + 1} epochs")
-                # Cargar los mejores pesos antes de terminar
                 if best_model_weights is not None:
                     model.load_state_dict(best_model_weights)
                 break
@@ -463,7 +415,6 @@ def train_model(
     }
 
     if output_dir:
-        # Guardar gráficas de pérdida
         plt.figure()
         plt.plot(history['train_losses'], label='Train Loss')
         plt.plot(history['val_losses'], label='Validation Loss')
@@ -473,13 +424,13 @@ def train_model(
         plt.legend()
         plt.savefig(os.path.join(output_dir, 'loss_curve.png'))
         plt.close()
-    
+
     if output_dir and args:
         args_dict = vars(args)
-        args_dict['epoch_stopped'] = epoch + 1  # Guardar la epoch real (1-based)
+        args_dict['epoch_stopped'] = epoch + 1
         with open(os.path.join(output_dir, 'config.json'), 'w') as f:
             json.dump(args_dict, f, indent=4)
-    
+
     if output_dir:
         pd.DataFrame(history).to_csv(os.path.join(output_dir, "train_history.csv"), index=False)
 
@@ -500,46 +451,37 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
 
-            # Aplicar sigmoid a las salidas para obtener probabilidades
             probs = torch.sigmoid(outputs)
-            preds = (probs > 0.5).float()  # Umbralizar a 0.5
+            preds = (probs > 0.5).float()
 
-            # Preparar máscaras para cálculo de pérdida
             if isinstance(loss_fn, (torch.nn.BCEWithLogitsLoss, smp.losses.SoftBCEWithLogitsLoss)):
                 loss_input = outputs
-                target = masks.unsqueeze(1).float()  # Añadir dimensión de canal
+                target = masks.unsqueeze(1).float()
             else:
-                loss_input = probs  # Usar probabilidades ya normalizadas
-                target = masks.float()  # Mantener forma (B, H, W)
+                loss_input = probs
+                target = masks.float()
 
-            # Justo antes de calcular la pérdida:
             if target.ndim == 3:
-                target = target.unsqueeze(1)  # [B, H, W] -> [B, 1, H, W]
+                target = target.unsqueeze(1)
 
             loss = loss_fn(loss_input, target)
             test_loss += loss.item()
 
-            # Calcular métricas para cada imagen en el batch
             for i in range(images.shape[0]):
-                # Convertir a numpy para cálculo de métricas
                 pred_mask = preds[i].squeeze().cpu().numpy()
                 true_mask = masks[i].squeeze().cpu().numpy()
 
-                # Guardar la máscara predicha y la real como imágenes PNG
                 pred_mask_path = os.path.join(output_dir, f"pred_mask_batch{batch_idx}_img{i}.png")
                 true_mask_path = os.path.join(output_dir, f"true_mask_batch{batch_idx}_img{i}.png")
 
                 cv2.imwrite(pred_mask_path, (pred_mask * 255).astype(np.uint8))
                 cv2.imwrite(true_mask_path, (true_mask * 255).astype(np.uint8))
 
-                # Si quieres guardar también la imagen de entrada:
                 input_img = images[i].cpu().numpy().transpose(1, 2, 0)
                 input_img_path = os.path.join(output_dir, f"input_batch{batch_idx}_img{i}.png")
-                # Convertir de RGB a BGR antes de guardar
                 input_img_bgr = cv2.cvtColor((input_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
                 cv2.imwrite(input_img_path, input_img_bgr)
-                
-                # Calcular métricas
+
                 tp, fp, fn, tn = smp.metrics.get_stats(
                     torch.tensor(pred_mask).unsqueeze(0).unsqueeze(0),
                     torch.tensor(true_mask).unsqueeze(0).unsqueeze(0),
@@ -561,8 +503,7 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                     "recall": recall.item(),
                     "f1_score": f1_score.item(),
                 })
-                
-                # Append to existing metrics file if it exists, otherwise create new
+
                 metrics_file = os.path.join(output_dir, "individual_metrics.csv")
                 df = pd.DataFrame(image_metrics)
                 if os.path.exists(metrics_file):
@@ -571,13 +512,10 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
                     df.to_csv(metrics_file, index=False)
 
 
-    # Calcular métricas agregadas ignorando NaN o 'NA'
     test_loss_mean = test_loss / len(test_dataloader)
-
     print(f"Average Test Loss: {test_loss_mean:.4f}")
 
     def safe_mean(values):
-        # Convierte 'NA' a np.nan y filtra None
         arr = np.array([
             float(v) if v not in [None, 'NA', 'NaN', 'nan', ''] else np.nan
             for v in values
@@ -592,12 +530,10 @@ def test_model(model, output_dir, test_dataloader, loss_fn, device):
         "f1_score": safe_mean([m["f1_score"] for m in image_metrics]),
     }
 
-    # Guardar métricas
     pd.DataFrame([aggregate_metrics]).to_csv(os.path.join(output_dir, "aggregate_metrics.csv"), index=False)
 
     return aggregate_metrics
 
-# Añadir clase para combinar BCE y Dice
 class BCEDiceLoss(torch.nn.Module):
     def __init__(self, dice_weight=0.5, bce_weight=0.5):
         super().__init__()
@@ -622,7 +558,6 @@ def main():
 	output_dir = args.output_dir
 	os.makedirs(output_dir, exist_ok=True)
 
-	# Define las rutas de datos (train/val/test) a partir de data_split
 	train_images_dir = os.path.join(args.data_split, 'train', 'images')
 	train_masks_dir = os.path.join(args.data_split, 'train', 'masks')
 	val_images_dir = os.path.join(args.data_split, 'val', 'images')
@@ -630,7 +565,6 @@ def main():
 	test_images_dir = os.path.join(args.data_split, 'test', 'images')
 	test_masks_dir = os.path.join(args.data_split, 'test', 'masks')
 
-	# Crear datasets
 	test_dataset = PetalVeinDataset(
 		images_dir=test_images_dir,
 		masks_dir=test_masks_dir,
@@ -642,9 +576,7 @@ def main():
 	pin_memory = True if device == "cuda" else False
 	test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
 
-	# Si solo se quiere testear
 	if args.test_only:
-		# Configura la función de pérdida según el nombre
 		if args.loss_fn.lower() == 'bce':
 			loss_fn = smp.losses.SoftBCEWithLogitsLoss()
 		elif args.loss_fn.lower() == 'focal':
@@ -656,7 +588,6 @@ def main():
 		else:
 			loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
 
-		# Crear modelo y cargar pesos
 		model = CamVidModel(args.arch, args.encoder_name, in_channels=3, out_classes=1).to(device)
 		if args.weights is not None and os.path.isfile(args.weights):
 			model.load_state_dict(torch.load(args.weights, map_location=device))
@@ -671,14 +602,12 @@ def main():
 		    loss_fn, 
 		    device
 		)
-		# Guardar métricas en CSV
 		logging.info(f"Guardando métricas en {output_dir}/metricas_detalladas.csv")
 		df_metrics = pd.DataFrame([metrics])
 		df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
 		logging.info("Test finalizado correctamente.")
 		return
 
-	# Crear datasets
 	train_dataset = PetalVeinDataset(
 		images_dir=train_images_dir,
 		masks_dir=train_masks_dir,
@@ -694,23 +623,20 @@ def main():
 		normalize=True,
 	)
 
-	# Crear dataloaders (ajusta num_workers si hace falta)
 	pin_memory = True if device == "cuda" else False
 	train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=pin_memory)
 	valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
 	test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=pin_memory)
 
-	# Define las configuraciones que quieres comparar
-	architectures = [args.arch]  # Puedes poner varias: ['Unet', 'FPN', ...]
-	encoders = [args.encoder_name]  # Varias si quieres comparar
-	loss_functions = [args.loss_fn]  # Varias si quieres comparar
+	architectures = [args.arch] 
+	encoders = [args.encoder_name] 
+	loss_functions = [args.loss_fn]  
 
 	all_metrics = []
 
 	for arch in architectures:
 		for encoder in encoders:
 			for loss_name in loss_functions:
-				# Configura la función de pérdida según el nombre
 				if loss_name.lower() == 'bce':
 					loss_fn = smp.losses.SoftBCEWithLogitsLoss()
 				elif loss_name.lower() == 'focal':
@@ -719,22 +645,19 @@ def main():
 					loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 				elif loss_name.lower() == 'bce_dice':
 					loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
-				else:  # default: BCE + Dice
+				else:  
 					loss_fn = BCEDiceLoss(dice_weight=0.5, bce_weight=0.5)
 				torch.cuda.empty_cache()
 
-				# Reiniciar el modelo y optimizador para cada entrenamiento
 				model = CamVidModel(arch, encoder, in_channels=3, out_classes=1).to(device)
 				optimizer = torch.optim.Adam(model.parameters(), lr=adam_lr)
 				scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=eta_min)
 
-				# Configura la semilla para reproducibilidad
 				torch.manual_seed(0)
 				np.random.seed(0)
 				if device == "cuda":
 					torch.cuda.manual_seed_all(0)
 
-				# Entrenar
 				history = train_model(
 					model, 
 					train_loader, 
@@ -744,13 +667,12 @@ def main():
 					loss_fn, 
 					device, 
 					epochs_max,
-					output_dir=args.output_dir,  # Pasa el directorio de salida
+					output_dir=args.output_dir, 
 					patience=early_stop_patience,
 					min_delta=early_stop_min_delta,
 					args=args
 				)
 
-				# Evaluar
 				metrics = test_model(
 					model, 
 					args.output_dir, 
@@ -759,13 +681,11 @@ def main():
 					device
 				)
 
-				# Añade información de configuración a las métricas
 				metrics['arch'] = arch
 				metrics['encoder'] = encoder
 				metrics['loss_fn'] = loss_name
 				all_metrics.append(metrics)
 
-	# Convertir a DataFrame y guardar en CSV
 	df_metrics = pd.DataFrame(all_metrics)
 	df_metrics.to_csv(f"{output_dir}/metricas_detalladas.csv", index=False)
 
