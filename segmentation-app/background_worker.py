@@ -1,6 +1,16 @@
+"""Background worker utilities.
+
+This module provides two helpers used by the segmentation app:
+- a shared ThreadPoolExecutor to run callables without creating raw threads
+- a helper to run subprocesses while streaming stdout/stderr into a Queue
+
+Both helpers optionally post status messages into an ``out_q`` queue
+using tuples of the form ``(type, payload)`` where ``type`` is one of
+``"log"``, ``"done"`` or ``"error"``.
+"""
+
 import threading
 import concurrent.futures
-import os
 import subprocess
 import queue
 import os
@@ -8,13 +18,29 @@ import os
 from typing import Callable, Tuple, Dict
 
 
-# --- ThreadPoolExecutor global para limitar hilos ---
 _CPU_COUNT = os.cpu_count() or 2
 _MAX_WORKERS = max(1, _CPU_COUNT - 1)
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="bgworker")
 
+
 def run_callable_in_thread(fn: Callable, args: Tuple = (), kwargs: Dict = None, out_q: queue.Queue = None):
-    """Ejecuta fn(*args, **kwargs) en un ThreadPoolExecutor y publica mensajes en out_q."""
+    """Run a callable in the shared ThreadPoolExecutor.
+
+    The callable is executed as ``fn(*args, **kwargs)``. Progress and
+    completion are reported via ``out_q`` if provided. The queue receives
+    a ``("log", "Task started")`` when the task begins, ``("done", result)``
+    when it finishes successfully, or ``("error", str(e))`` if an
+    exception is raised.
+
+    Args:
+        fn: Callable to execute.
+        args: Positional arguments tuple for ``fn``.
+        kwargs: Keyword arguments for ``fn``.
+        out_q: Optional ``queue.Queue`` to receive log/done/error messages.
+
+    Returns:
+        concurrent.futures.Future: Future for the submitted task.
+    """
     if kwargs is None:
         kwargs = {}
 
@@ -29,13 +55,29 @@ def run_callable_in_thread(fn: Callable, args: Tuple = (), kwargs: Dict = None, 
             if out_q:
                 out_q.put(("error", str(e)))
 
-    # Usar el pool en vez de crear hilos sueltos
     future = _executor.submit(_target)
     return future
 
 
 def run_subprocess(cmd: list, out_q: queue.Queue = None, cwd: str = None, env: dict = None):
-    """Lanza un subprocess y publica stdout/exit en out_q. Útil para entrenamientos/procesos pesados."""
+    """Start a subprocess and stream its output to ``out_q`` if provided.
+
+    The function launches the subprocess with merged stdout/stderr and
+    starts a daemon thread that reads lines from the process' stdout and
+    posts them as ``("log", line)``. When the process exits a final
+    ``("done", {"returncode": rc})`` message is posted. If starting or
+    reading the process fails, an ``("error", str(e))`` message is sent.
+
+    Args:
+        cmd: List with the command and arguments to execute.
+        out_q: Optional ``queue.Queue`` to receive log/done/error messages.
+        cwd: Working directory for the subprocess.
+        env: Environment mapping for the subprocess.
+
+    Returns:
+        tuple(process, thread) or None: The subprocess.Popen instance and
+        the reader thread, or None if process launch failed.
+    """
     try:
         proc = subprocess.Popen(
             cmd,
