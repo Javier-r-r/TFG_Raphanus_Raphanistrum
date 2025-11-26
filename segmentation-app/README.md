@@ -15,29 +15,29 @@ A desktop GUI application for binary segmentation inference with mask-based metr
 ## Installation
 
 1. Create a virtual environment:
-\`\`\`bash
+```bash
 python -m venv .venv
-\`\`\`
+```
 
 2. Activate the virtual environment:
-\`\`\`bash
+```bash
 # Windows
 .venv\Scripts\activate
 # Linux/Mac
 source .venv/bin/activate
-\`\`\`
+```
 
 3. Install dependencies:
-\`\`\`bash
+```bash
 pip install -r requirements.txt
-\`\`\`
+```
 
 ## Usage
 
 Run the application:
-\`\`\`bash
+```bash
 python app.py
-\`\`\`
+```
 
 ### Workflow
 
@@ -51,18 +51,22 @@ python app.py
 
 ### File Structure
 
-- `app.py` - Application entry point
-- `main_app.py` - Main application class and UI logic
-- `models.py` - Model classes and inference utilities
-- `ui_components.py` - Custom UI widgets (ScrollableFrame)
+- `app.py` - Application entry point (launches the GUI)
+- `main.py` - Main application class and UI logic (window, menus, actions)
+- `models.py` - Model loading, inference utilities and wrappers
+- `background_worker.py` - Helpers to run background tasks and subprocesses (thread pool)
+- `metrics.py` - Metrics computation functions for masks (density, thickness, areoles, etc.)
+- `petals_generator.py` - Utilities to generate petal masks from RGB images
+- `ui_components.py` - Custom UI widgets (e.g. `ScrollableFrame`)
 - `theme.py` - UI theme and styling configuration
-- `metrics.py` - Metrics computation functions (external dependency)
+- `requirements.txt` - Python dependencies for the app
+- `README.md` - This file (documentation for the app)
 
 ## Model Requirements
 
 The application expects:
 - PyTorch model weights (.pth file)
-- Optional: `config.json` in the same directory for automatic architecture detection
+- `config.json` in the same directory for automatic architecture detection
 - Optional: `dataset_mean.npy` and `dataset_std.npy` for custom normalization
 
 ## Batch Processing
