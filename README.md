@@ -57,4 +57,4 @@ El objetivo principal de este trabajo es analizar cómo el estrés salino afecta
 ---
 
 ## **Licencia**
-Este proyecto se distribuye bajo la licencia MIT. Consulta el archivo `LICENSE` para más detalles.
+Este proyecto se distribuye bajo la licencia Apache 2.0. Consulta el archivo `LICENSE` para más detalles.
